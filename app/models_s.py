@@ -15,8 +15,13 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
     k = (y_at_sensor - y_toe)**2 / (80 - x_toe)
 
     def get_phreatic_y(x):
-        if x < x_toe: return y_toe
-        return np.sqrt(max(0, k * (x - x_toe))) + y_toe
+        y_surface = np.interp(x, dx, dy)
+        if x < x_toe: 
+            return min(y_toe, y_surface)
+
+        y_water = np.sqrt(max(0, k * (x - x_toe))) + y_toe
+        # CAP: Water height cannot exceed the ground surface for pore pressure calcs
+        return min(y_water, y_surface)
 
     # 2. FIND INTERSECTIONS
     x_scan = np.linspace(xc - R + 0.01, xc + R - 0.01, 2000) # 500
