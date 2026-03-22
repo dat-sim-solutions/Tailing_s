@@ -98,7 +98,7 @@ if not data.empty:
             st.write(f"**Head:** {round(u_latest/9.81, 2)} m")
 
         with col2:
-            import matplotlib.patches as mpatches # Necessary for the legend proxy
+            from matplotlib.lines import Line2D # Necessary for the legend proxy
             
             fig, ax = plt.subplots(figsize=(10, 6))
             dx, dy = np.array([40, 70, 100, 130]), np.array([10, 45, 45, 14])
@@ -111,7 +111,8 @@ if not data.empty:
             ax.plot(xc + R*np.cos(theta), yc + R*np.sin(theta), 'r--', alpha=0.4)
             ax.scatter([xc], [yc], color='red', marker='+', s=100)
             # CREATE PROXY ARTIST FOR LEGEND (The trick for arrows)
-            seismic_patch = mpatches.Patch(color='red', label=f'Seismic Force (kh={kh})')
+            seismic_arrow_legend = Line2D([0], [0], color='red', marker='>', linestyle='-', 
+                                          markersize=10, label=f'Seismic Force (kh={kh})')
             
             if slices:
                 for s in slices:
@@ -134,7 +135,7 @@ if not data.empty:
             # We manually collect the handles to include our proxy seismic patch
             handles, labels = ax.get_legend_handles_labels()
             if kh > 0:
-                handles.append(seismic_patch)
+                handles.append(seismic_arrow_legend)
                 
             ax.set_ylim(0, 120); ax.set_xlim(20, 150); ax.set_aspect('equal')
             ax.legend(handles=handles, loc='upper left'); ax.grid(True, alpha=0.2)
