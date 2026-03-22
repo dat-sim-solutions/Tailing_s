@@ -24,7 +24,7 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
         return min(y_water, y_surface)
 
     # 2. FIND INTERSECTIONS
-    x_scan = np.linspace(xc - R - 1, xc + R + 1, 2000) # -0.01, 500
+    x_scan = np.linspace(xc - R - 1, xc + R + 1, 4000) # -0.01, 500
     y_dam_scan = np.interp(x_scan, dx, dy)
     # y_circ_scan = yc - np.sqrt(R**2 - (x_scan - xc)**2) # y_circ_scan as a function fo x_scan
 
