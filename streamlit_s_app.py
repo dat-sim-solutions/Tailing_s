@@ -126,9 +126,8 @@ if not data.empty:
                         # Pointing Right (Out of slope)
                         ax.arrow(s['x_mid'], y_midpoint, vector_magnitude, 0, 
                                  head_width=1.5, head_length=1.0, fc='red', ec='red', 
-                                 alpha=0.8, zorder=10)
+                                 alpha=0.8, zorder=10,  label="Vector")
 
-            
             ax.set_ylim(0, 120); ax.set_xlim(20, 150); ax.set_aspect('equal')
             ax.legend(); ax.grid(True, alpha=0.2)
             st.pyplot(fig)
