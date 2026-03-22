@@ -113,6 +113,21 @@ if not data.empty:
                 for s in slices:
                     ax.bar(s['x_mid'], s['h'], width=s['b'], bottom=s['y_bot'], 
                            color='orange', alpha=0.5, edgecolor='black', linewidth=0.2)
+                    # SEISMIC VECTOR PHYSICS (NEW):
+                    if kh > 0 and s['h'] > 0: # Only draw if there is soil and kh > 0
+                        # Vector Origin: The vertical midpoint of the slice
+                        y_midpoint = s['y_bot'] + (s['h'] / 2)
+                        
+                        # Magnitude of the push: proportional to slice height and kh
+                        # (We scale it so it looks good on the plot)
+                        vector_magnitude = kh * s['h'] * 0.5 
+                        
+                        # Draw the red vector (Fseismic = W * kh)
+                        # Pointing Right (Out of slope)
+                        ax.arrow(s['x_mid'], y_midpoint, vector_magnitude, 0, 
+                                 head_width=1.5, head_length=1.0, fc='red', ec='red', 
+                                 alpha=0.8, zorder=10)
+
             
             ax.set_ylim(0, 120); ax.set_xlim(20, 150); ax.set_aspect('equal')
             ax.legend(); ax.grid(True, alpha=0.2)
