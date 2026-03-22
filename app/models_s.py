@@ -72,7 +72,7 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
             
             # Driving Force = Static Moment + Seismic Moment (Normalized by R)
             static_moment = s['W'] * np.sin(a_rad)
-            seismic_moment = (kh * s['W'] * s['hi']) / R
+            seismic_moment = abs(kh * s['W'] * s['hi'] / R)
             den += (static_moment + seismic_moment)
             
             m_alpha = np.cos(a_rad) + (np.sin(a_rad) * np.tan(phi_rad) / fs)
