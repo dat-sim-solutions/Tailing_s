@@ -94,6 +94,7 @@ if not data.empty:
                 else: st.success("✅ SEISMICALLY STABLE")
             else:
                 st.error("No Intersection")
+            st.write(f"**Fs:** {fs}")
             st.write(f"**Pore Pressure:** {u_latest} kPa")
             st.write(f"**Head:** {round(u_latest/9.81, 2)} m")
 
