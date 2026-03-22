@@ -5,8 +5,8 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
     Bishop Stability Analysis with Dupuit Parabola and Pseudo-static Seismic kh.
     """
     # Dam Geometry
-    dx = np.array([40, 70, 100, 130])
-    dy = np.array([10, 45, 45, 14])
+    dx = np.array([0, 40, 70, 100, 130, 200])
+    dy = np.array([10,10, 45, 45, 14, 14])
     
     # 1. DEFINE THE DUPUIT PARABOLA
     h_at_sensor = sensor_u_kpa / gamma_w
