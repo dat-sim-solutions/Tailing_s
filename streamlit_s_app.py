@@ -125,7 +125,7 @@ if not data.empty:
                         
                         # Magnitude of the push: proportional to slice height and kh
                         # (We scale it so it looks good on the plot)
-                        vector_magnitude = kh * s['h'] * 0.5 
+                        vector_magnitude = - kh * s['h'] * 0.7 # 0.5 
                         
                         # Draw the red vector (Fseismic = W * kh)
                         # Pointing Right (Out of slope)
