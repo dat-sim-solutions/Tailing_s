@@ -21,7 +21,7 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
     # 2. FIND INTERSECTIONS
     x_scan = np.linspace(xc - R + 0.01, xc + R - 0.01, 1000) # 500
     y_dam_scan = np.interp(x_scan, dx, dy)
-    y_circ_scan = yc - np.sqrt(R**2 - (x_scan - xc)**2)
+    y_circ_scan = yc - np.sqrt(R**2 - (x_scan - xc)**2) # y_circ_scan as a function fo x_scan
     
     diff = y_dam_scan - y_circ_scan
     sign_changes = np.where(np.diff(np.sign(diff)))[0]
