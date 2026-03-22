@@ -77,8 +77,8 @@ if not data.empty:
 
     with tab1:
         st.sidebar.header("🔴 Slip Circle Geometry")
-        xc = st.sidebar.slider("Center X (xc)", 30.0, 120.0, 75.0)
-        yc = st.sidebar.slider("Center Y (yc)", 30.0, 120.0, 85.0)
+        xc = st.sidebar.slider("Center X (xc)", 20.0, 150.0, 75.0)
+        yc = st.sidebar.slider("Center Y (yc)", 30.0, 150.0, 85.0)
         R = st.sidebar.slider("Radius (R)", 10.0, 100.0, 65.0)
 
         # Physics Run with kh
@@ -145,8 +145,8 @@ if not data.empty:
         st.subheader("Seismic Grid Search")
         st.write("Calculates FS for a grid of centers using the current Radius.")
         if st.button("🚀 Start Global Seismic Scan"):
-            grid_x = np.linspace(60, 100, 15)
-            grid_y = np.linspace(60, 100, 15)
+            grid_x = np.linspace(30, 140, 15)
+            grid_y = np.linspace(60, 140, 15)
             fs_matrix = np.zeros((len(grid_y), len(grid_x)))
             progress_text = "Analyzing slope stability surfaces..."
             my_bar = st.progress(0, text=progress_text)
