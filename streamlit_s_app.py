@@ -197,9 +197,9 @@ if not data.empty:
     ax_alpha.grid(True, linestyle=':', alpha=0.6)
     # Fill the area to show Driving vs Resisting zones
     ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) > 0), 
-                          color='salmon', alpha=0.3, label='Driving Zone')
+                          color='salmon', alpha=0.5, label='Driving Zone')
     ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) < 0), 
-                          color='skyblue', alpha=0.3, label='Resisting Zone')
+                          color='skyblue', alpha=0.5, label='Resisting Zone')
     
     ax_alpha.legend()
     st.pyplot(fig_alpha) # !!
