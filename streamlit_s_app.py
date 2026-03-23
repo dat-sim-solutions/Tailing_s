@@ -91,7 +91,9 @@ if not data.empty:
                 st.plotly_chart(plot_fs_gauge(fs), use_container_width=True)
                 if fs < 1.0: st.error("🚨 SEISMIC COLLAPSE")
                 elif fs < 1.2: st.warning("⚠️ CRITICAL VULNERABILITY")
-                else: st.success("✅ SEISMICALLY STABLE")
+                elif fs <=50: st.success("✅ SEISMICALLY STABLE")
+                elif fs==0: st.error("❌ No Intersection found.")
+                else: st.warning("⚖️ Equilibrium reached: The driving forces are too small to cause a slide for this specific circle.")
             else:
                 st.error("No Intersection")
             st.write(f"**Fs:** {fs}")
