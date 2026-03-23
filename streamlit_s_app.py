@@ -142,17 +142,6 @@ if not data.empty:
             ax.legend(handles=handles, loc='upper left'); ax.grid(True, alpha=0.2)
             st.pyplot(fig)
             
-            #if fs:
-            with st.expander("📈 View Solver Convergence"):
-                fig_conv, ax_conv = plt.subplots(figsize=(6, 3))
-                ax_conv.plot(history, marker='o', linestyle='-', color='purple')
-                ax_conv.set_title("Bishop Iteration Path")
-                ax_conv.set_xlabel("Iteration Step")
-                ax_conv.set_ylabel("Factor of Safety")
-                ax_conv.grid(True, alpha=0.3)
-                st.pyplot(fig_conv)
-                st.write(f"Converged in **{len(history)-1}** steps.")
-            
     with tab2:
         st.subheader("Seismic Grid Search")
         st.write("Calculates FS for a grid of centers using the current Radius.")
@@ -182,15 +171,16 @@ if not data.empty:
             min_found = np.nanmin(fs_matrix)
             st.info(f"The most critical center in this zone has an FS of: **{min_found}**")
 
-    with st.expander("📈 View Solver Convergence"):
-        fig_conv, ax_conv = plt.subplots(figsize=(6, 3))
-        ax_conv.plot(history, marker='o', linestyle='-', color='purple')
-        ax_conv.set_title("Bishop Iteration Path")
-        ax_conv.set_xlabel("Iteration Step")
-        ax_conv.set_ylabel("Factor of Safety")
-        ax_conv.grid(True, alpha=0.3)
-        st.pyplot(fig_conv)
-        st.write(f"Converged in **{len(history)-1}** steps.")
+    #with st.expander("📈 View Solver Convergence"):
+    fig_conv, ax_conv = plt.subplots(figsize=(6, 2))
+    ax_conv.plot(history, marker='o', linestyle='-', color='purple')
+    ax_conv.set_title("Bishop Iteration Path")
+    ax_conv.set_xlabel("Iteration Step")
+    ax_conv.set_ylabel("Factor of Safety")
+    ax_conv.grid(True, alpha=0.3)
+    st.pyplot(fig_conv)
+    st.write(f"Converged in **{len(history)-1}** steps.")
+    
     st.write("---")
     st.subheader("📋 Raw Data Feed (Neon AWS)")
     st.dataframe(data, use_container_width=True)
