@@ -82,7 +82,7 @@ if not data.empty:
         R = st.sidebar.slider("Radius (R)", 10.0, 100.0, 65.0)
 
         # Physics Run with kh
-        fs, slices, water_line = calculate_slope_stability(xc, yc, R, u_latest, kh=kh)
+        fs, slices, water_line, history = calculate_slope_stability(xc, yc, R, u_latest, kh=kh)
 
         col1, col2 = st.columns([1, 3])
                 
