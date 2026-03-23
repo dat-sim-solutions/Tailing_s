@@ -172,7 +172,7 @@ if not data.empty:
             st.info(f"The most critical center in this zone has an FS of: **{min_found}**")
 
     #with st.expander("📈 View Solver Convergence"):
-    fig_conv, ax_conv = plt.subplots(figsize=(4, 2))
+    fig_conv, ax_conv = plt.subplots(figsize=(6, 2))
     ax_conv.plot(history, marker='o', linestyle='-', color='purple')
     ax_conv.set_title("Bishop Iteration Path")
     ax_conv.set_xlabel("Iteration Step")
