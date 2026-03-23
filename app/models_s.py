@@ -70,7 +70,9 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
 
     # 4. BISHOP SOLVER (Updated for kh)
     fs = 1.2
+    convergence_history = [] # <--- NEW: List to store steps
     for i in range(25):
+        convergence_history.append(fs) # Record the current guess
         num, den = 0, 0
         for s in slices:
             a_rad = s['alpha_rad']
@@ -98,6 +100,7 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
         else:
             new_fs = num / den
 
+        convergence_history.append(new_fs) # Record final value
         # Convergence Check
         if abs(new_fs - fs) < 0.001:
             break
@@ -105,6 +108,6 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
 
     # Final logic: if FS is still unrealistic, return a special value
     if fs < 0 or fs > 50:
-        return 0.0, slices, (w_x, w_y) # 0.0 signals a non-physical geometry
+        return 0.0, slices, (w_x, w_y), convergence_history # 0.0 signals a non-physical geometry
         
-    return round(fs, 3), slices, (w_x, w_y)
+    return round(fs, 3), slices, (w_x, w_y), convergence_history
