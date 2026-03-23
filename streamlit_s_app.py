@@ -182,6 +182,27 @@ if not data.empty:
     ax_conv.grid(True, alpha=0.3)
     st.pyplot(fig_conv)
     st.write(f"Converged in **{len(history)-1}** steps.")
+
+    st.write("### 📐 Slice Angle Distribution ($\alpha$)")
+    # 1. Extract data from the list of dictionaries
+    x_coords = [s['x_mid'] for s in slices]
+    alphas = [np.degrees(s['alpha_rad']) for s in slices] # alpha_rad from your list
+    # 2. Create the plot
+    fig_alpha, ax_alpha = plt.subplots(figsize=(8, 4))
+    ax_alpha.plot(x_coords, alphas, marker='o', color='teal', label='Base Angle (α)')
+    ax_alpha.axhline(0, color='black', linestyle='--', alpha=0.5)
+    # Labels and Styling
+    ax_alpha.set_xlabel("X-Coordinate of Slice (m)"); ax_alpha.set_ylabel("Angle α (degrees)")
+    ax_alpha.set_title("Distribution of Slip Surface Inclination")
+    ax_alpha.grid(True, linestyle=':', alpha=0.6)
+    # Fill the area to show Driving vs Resisting zones
+    ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) > 0), 
+                          color='salmon', alpha=0.3, label='Driving Zone')
+    ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) < 0), 
+                          color='skyblue', alpha=0.3, label='Resisting Zone')
+    
+    ax_alpha.legend()
+    st.pyplot(fig_alpha) # !!
     
     st.write("---")
     st.subheader("📋 Raw Data Feed (Neon AWS)")
