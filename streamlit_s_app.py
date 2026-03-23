@@ -184,6 +184,7 @@ if not data.empty:
     st.write(f"Converged in **{len(history)-1}** steps.")
 
     st.write("### 📐 Slice Angle Distribution ($$\alpha$$)")
+    st.latex(r"\alpha \text{ (degrees) vs. x-coordinate}")
     # 1. Extract data from the list of dictionaries
     x_coords = [s['x_mid'] for s in slices]
     alphas = [np.degrees(s['alpha_rad']) for s in slices] # alpha_rad from your list
