@@ -15,11 +15,8 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
     k = (y_at_sensor - y_toe)**2 / (80 - x_toe)
 
     def get_phreatic_y(x):
-        # This version allows the line to exist above the dam (Visual)
-        if x < x_toe: 
-            return y_toe
-        y_water = np.sqrt(max(0, k * (x - x_toe))) + y_toe
-        return y_water
+        if x < x_toe: return y_toe
+        return np.sqrt(max(0, k * (x - x_toe))) + y_toe
 
     # 2. FIND INTERSECTIONS
     x_scan = np.linspace(xc - R +0.01, xc + R -0.01, 2000) # -0.01, 500
@@ -27,7 +24,6 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
     y_circ_scan = yc - np.sqrt(R**2 - (x_scan - xc)**2) # y_circ_scan as a function fo x_scan
     
     diff = y_dam_scan - y_circ_scan
-
     # Find all indices where the sign changes
     # We use np.diff(np.signbit()) which is more robust for zero-crossings
     abs_diff = np.signbit(diff)
@@ -39,7 +35,6 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
     # Use the first and last recorded crossings as our boundaries
     idx_start, idx_end = sign_changes[0], sign_changes[-1]
     x_start, x_end = x_scan[idx_start], x_scan[idx_end]
-    # x_start, x_end = x_scan[sign_changes[0]], x_scan[sign_changes[-1]]
     
     # 3. SLICES
     num_slices = 30
