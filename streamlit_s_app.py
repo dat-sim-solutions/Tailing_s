@@ -165,7 +165,7 @@ if not data.empty:
 
             for i, py in enumerate(grid_y):
                 for j, px in enumerate(grid_x):
-                    val, _, _, _, _, _  = calculate_slope_stability(px, py, R, u_latest, kh=kh)
+                    val, _, _, _, _, _ = calculate_slope_stability(px, py, R, u_latest, kh=kh)
                     # Use Absolute value for the heatmap
                     abs_val = abs(val) if val is not None else np.nan
                     # Filter: Ignore zeros (no intersection) and cap stable zones at 5.0
