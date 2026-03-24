@@ -211,14 +211,14 @@ if not data.empty:
     col2.metric("Driving (Den)", f"{den:.2f} kN")
     col3.metric("Final FS", f"{fs:.3f}")
     # 2. Create a Comparison Bar Chart
-    import pandas as pd
-    force_data = pd.DataFrame({
-        "Force Type": ["Resisting (Strength)", "Driving (Load)"],
-        "Value [kN]": [num, den]
-    })
+    #import pandas as pd
+    #force_data = pd.DataFrame({
+    #    "Force Type": ["Resisting (Strength)", "Driving (Load)"],
+    #    "Value [kN]": [num, den]
+    #})
     # Use st.bar_chart or Plotly for a more professional look
-    st.bar_chart(data=force_data, x="Force Type", y="Value [kN]", color="#2e7d32" if fs > 1.5 else "#d32f2f")
-    st.caption("The Factor of Safety is simply the Green bar divided by the Red bar.") # !!
+    #st.bar_chart(data=force_data, x="Force Type", y="Value [kN]", color="#2e7d32" if fs > 1.5 else "#d32f2f")
+    #st.caption("The Factor of Safety is simply the Green bar divided by the Red bar.") # !!
     
     st.write("---")
     st.subheader("📋 Raw Data Feed (Neon AWS)")
