@@ -97,6 +97,13 @@ if not data.empty:
                 else: st.warning("⚖️ Equilibrium reached: The driving forces are too small to cause a slide for this specific circle.")
             else:
                 st.error("No Intersection")
+
+            if fs > 0:
+                direction = "➡️ Right (Inner/Reservoir)"
+            else:
+                direction = "⬅️ Left (Outer/Toe)"
+                
+            st.info(f"**Failure Direction:** {direction}")
             st.write(f"**Fs:** {fs}")
             st.write(f"**Pore Pressure:** {u_latest} kPa")
             st.write(f"**Head:** {round(u_latest/9.81, 2)} m")
