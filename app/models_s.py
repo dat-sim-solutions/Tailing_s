@@ -30,7 +30,8 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
     sign_changes = np.where(abs_diff[:-1] != abs_diff[1:])[0]
     
     if len(sign_changes) < 2:
-        return None, None, (None, None)
+        return 0.0, [], None, [], 0.0, 0.0
+        #return None, None, (None, None)
 
     # Use the first and last recorded crossings as our boundaries
     idx_start, idx_end = sign_changes[0], sign_changes[-1]
