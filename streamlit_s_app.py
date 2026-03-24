@@ -98,7 +98,7 @@ if not data.empty:
             else:
                 st.error("No Intersection")
 
-            if fs > 0:
+            if fs < 0:
                 direction = "➡️ Right (Inner/Reservoir)"
             else:
                 direction = "⬅️ Left (Outer/Toe)"
