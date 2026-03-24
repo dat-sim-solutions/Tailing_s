@@ -99,9 +99,9 @@ if not data.empty:
                 st.error("No Intersection")
 
             if fs < 0:
-                direction = "➡️ Right (Inner/Reservoir)"
+                direction = "--> Right (Inner/Reservoir)"
             else:
-                direction = "⬅️ Left (Outer/Toe)"
+                direction = "<-- Left (Outer/Toe)"
                 
             st.info(f"**Failure Direction:** {direction}")
             st.write(f"**Fs:** {fs}")
