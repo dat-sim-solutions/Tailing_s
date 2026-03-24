@@ -104,12 +104,10 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
         # Convergence Check
         if abs(new_fs - fs) < 0.001:
             break
-        fs = new_fs
+        fs = abs(new_fs)
 
     # Final logic: if FS is still unrealistic, return a special value
     if fs > 50:
-        return 50.0, slices, (w_x, w_y), convergence_history # Cap it at 50 for plotting
-    elif fs < 0:
-        return 0.0, slices, (w_x, w_y), convergence_history # 0.0 signals a non-physical geometry
+        return 50.0, slices, (w_x, w_y), convergence_history, num, den
         
-    return round(fs, 3), slices, (w_x, w_y), convergence_history
+    return round(fs, 3), slices, (w_x, w_y), convergence_history, num, den
