@@ -180,7 +180,7 @@ if not data.empty:
             sns.heatmap(fs_matrix, annot=True, fmt=".2f", cmap="RdYlGn", 
                         xticklabels=np.round(grid_x, 0), yticklabels=np.round(grid_y, 0), ax=ax_h, cbar_kws={'label': 'Absolute Factor of Safety'})
             ax_h.invert_yaxis()
-            ax_h.set_title(f"MINIMUM Safety Zones for Radius {R}m, kh: {kh})")
+            ax_h.set_title(f"MINIMUM Safety Zones for Radius {R}m, kh: {kh}")
             ax_h.set_xlabel("Center X (m)")
             ax_h.set_ylabel("Center Y (m)")
             st.pyplot(fig_h)
