@@ -205,7 +205,7 @@ if not data.empty:
     ax_alpha.grid(True, linestyle=':', alpha=0.6)
     # Fill the area to show Driving vs Resisting zones
     ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) > 0), 
-                          color='salmon', alpha=0.5, label='Clockwise-Driving Zone')
+                          color='salmon', alpha=0.5, label='Clockwise-Driving Zone ($\circlearrowright$)')
     ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) < 0), 
                           color='skyblue', alpha=0.5, label='Counter-Clockwise-Driving Zone')
     
