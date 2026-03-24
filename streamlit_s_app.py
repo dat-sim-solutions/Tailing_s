@@ -82,7 +82,7 @@ if not data.empty:
         R = st.sidebar.slider("Radius (R)", 10.0, 100.0, 65.0)
 
         # Physics Run with kh
-        fs, slices, water_line, history = calculate_slope_stability(xc, yc, R, u_latest, kh=kh)
+        fs, slices, water_line, history, num, den = calculate_slope_stability(xc, yc, R, u_latest, kh=kh)
 
         col1, col2 = st.columns([1, 3])
                 
@@ -203,6 +203,22 @@ if not data.empty:
     
     ax_alpha.legend()
     st.pyplot(fig_alpha) # !!
+
+    st.write("### ⚖️ Force Balance Analysis") # !!!
+    # Display as Metrics for quick reading
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Resisting (Num)", f"{num:.2f} kN")
+    col2.metric("Driving (Den)", f"{den:.2f} kN")
+    col3.metric("Final FS", f"{fs:.3f}")
+    # 2. Create a Comparison Bar Chart
+    import pandas as pd
+    force_data = pd.DataFrame({
+        "Force Type": ["Resisting (Strength)", "Driving (Load)"],
+        "Value [kN]": [num, den]
+    })
+    # Use st.bar_chart or Plotly for a more professional look
+    st.bar_chart(data=force_data, x="Force Type", y="Value [kN]", color="#2e7d32" if fs > 1.5 else "#d32f2f")
+    st.caption("The Factor of Safety is simply the Green bar divided by the Red bar.") # !!
     
     st.write("---")
     st.subheader("📋 Raw Data Feed (Neon AWS)")
