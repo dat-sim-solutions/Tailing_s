@@ -61,7 +61,7 @@ def calculate_slope_stability(xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w
         u_slice = h_water * gamma_w if h_water > 0 else 0
 
         W = h_slice * b * gamma
-        alpha_rad = np.arcsin((xc - x_mid) / R) 
+        alpha_rad = np.arcsin((x_mid - xc) / R) 
         
         slices.append({
             'W': W, 'alpha_rad': alpha_rad, 'b': b, 'u': u_slice, 
