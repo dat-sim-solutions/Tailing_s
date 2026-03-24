@@ -153,33 +153,43 @@ if not data.empty:
             st.pyplot(fig)
             
     with tab2:
-        st.subheader("Seismic Grid Search")
+        st.subheader("🌐 Global Stability Grid Search")
         st.write("Calculates FS for a grid of centers using the current Radius.")
-        if st.button("🚀 Start Global Seismic Scan"):
+        if st.button("🚀 Start Global Scan"):
             grid_x = np.linspace(30, 140, 15)
             grid_y = np.linspace(60, 140, 15)
-            fs_matrix = np.zeros((len(grid_y), len(grid_x)))
+            fs_matrix = np.empty((len(grid_y), len(grid_x)))
+            fs_matrix[:] = np.nan # Initialize with NaN
             progress_text = "Analyzing slope stability surfaces..."
             my_bar = st.progress(0, text=progress_text)
 
             for i, py in enumerate(grid_y):
                 for j, px in enumerate(grid_x):
-                    val, _, _ = calculate_slope_stability(px, py, R, u_latest, kh=kh)
-                    # Filter out artifacts/singularities
-                    fs_matrix[i, j] = val if (val and 0 < val < 10) else np.nan
+                    val, _, _, _, _, _  = calculate_slope_stability(px, py, R, u_latest, kh=kh)
+                    # Use Absolute value for the heatmap
+                    abs_val = abs(val) if val is not None else np.nan
+                    # Filter: Ignore zeros (no intersection) and cap stable zones at 5.0
+                    if 0.1 < abs_val < 50:
+                        fs_matrix[i, j] = min(abs_val, 5.0)
+                    else:
+                        fs_matrix[i, j] = np.nan
+                    
                 my_bar.progress((i + 1) / len(grid_y))
 
             fig_h, ax_h = plt.subplots(figsize=(10, 8))
             sns.heatmap(fs_matrix, annot=True, fmt=".2f", cmap="RdYlGn", 
-                        xticklabels=np.round(grid_x, 0), yticklabels=np.round(grid_y, 0), ax=ax_h, cbar_kws={'label': 'Factor of Safety'})
+                        xticklabels=np.round(grid_x, 0), yticklabels=np.round(grid_y, 0), ax=ax_h, cbar_kws={'label': 'Absolute Factor of Safety'})
             ax_h.invert_yaxis()
-            ax_h.set_title(f"Minimum Safety Zones for Radius {R}m")
+            ax_h.set_title(f"MINIMUM Safety Zones for Radius {R}m, kh: {kh})")
             ax_h.set_xlabel("Center X (m)")
             ax_h.set_ylabel("Center Y (m)")
             st.pyplot(fig_h)
             
             min_found = np.nanmin(fs_matrix)
-            st.info(f"The most critical center in this zone has an FS of: **{min_found}**")
+            if min_found < 1.0:
+                st.error(f"⚠️ **DANGER:** The most critical center found has an FS of: **{min_found:.3f}**")
+            else:
+                st.success(f"✅ **Safe:** The most critical center found has an FS of: **{min_found:.3f}**")
 
     #with st.expander("📈 View Solver Convergence"):
     fig_conv, ax_conv = plt.subplots(figsize=(6, 2))
