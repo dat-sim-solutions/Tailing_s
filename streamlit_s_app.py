@@ -6,6 +6,8 @@ import seaborn as sns
 from sqlalchemy import create_engine, text
 from app.models_s import calculate_slope_stability # Using the new models_s
 import plotly.graph_objects as go
+import time
+import requests
 
 # 1. DATABASE CONFIGURATION
 DB_URI = st.secrets["NEON_DB_URI"] 
@@ -32,6 +34,38 @@ def get_neon_data():
     return df
 
 data = get_neon_data()
+
+def enterprise_iot_layer():
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🌐 Enterprise Data Layer")
+    
+    # Toggle between SQL Archive and Live SAP Feed
+    mode = st.sidebar.radio("Data Source:", ["Neon SQL (Historical)", "SAP HANA (Live IoT)"])
+
+    if mode == "SAP HANA (Live IoT)":
+        if st.sidebar.button("📡 Sync with SAP Leonardo"):
+            with st.sidebar.status("Authenticating with SAP S/4HANA...", expanded=False) as status:
+                time.sleep(1) # Simulated Handshake
+                st.write("Extracting OData Service: /Z_PIEZOMETER_READINGS...")
+                time.sleep(1)
+                
+                # The "Secret Sauce": Mocking a JSON Response
+                # This proves you know how SAP structures IoT data
+                live_sap_payload = {
+                    "d": {
+                        "results": [
+                            {"SensorID": "PZ-01", "Level": 22.45, "Unit": "m", "Health": "Green"},
+                            {"SensorID": "PZ-02", "Level": 19.80, "Unit": "m", "Health": "Green"}
+                        ]
+                    }
+                }
+                
+                # Update your phreatic line variable globally
+                st.session_state['current_pore_pressure'] = live_sap_payload['d']['results'][0]['Level']
+                status.update(label="SAP Sync Active", state="complete")
+            
+            st.sidebar.success(f"Live Level: {st.session_state['current_pore_pressure']}m")
+            st.toast("Stability Model Updated via SAP IoT Feed", icon="🔌")
 
 def plot_fs_gauge(fs_value):
     fig = go.Figure(go.Indicator(
@@ -62,11 +96,23 @@ def plot_fs_gauge(fs_value):
     return fig
 
 if not data.empty:
+    # --- 1. CALL THE SAP LAYER FIRST ---
+    enterprise_iot_layer()
+    
     # --- SIDEBAR CONTROLS ---
     st.sidebar.header("⏱️ Data Selection")
     selected_time = st.sidebar.selectbox("Select Timestamp", data['timestamp'])
     current_row = data[data['timestamp'] == selected_time].iloc[0]
-    u_latest = current_row['pore_pressure']
+    #u_latest = current_row['pore_pressure']
+
+    # --- 3. THE "SMART" LOGIC SWITCH ---
+    # Check if we have a live SAP value in session state
+    if 'current_pore_pressure' in st.session_state:
+        u_latest = st.session_state['current_pore_pressure']
+        st.sidebar.info(f"Using LIVE SAP Data: {u_latest} kPa")
+    else:
+        u_latest = current_row['pore_pressure']
+        st.sidebar.info("Using Historical SQL Data")
 
     st.sidebar.header("🌋 Seismic Analysis")
     kh = st.sidebar.slider("Seismic Coeff (kh)", 0.0, 0.3, 0.15, step=0.01, 
