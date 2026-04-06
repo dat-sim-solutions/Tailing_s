@@ -14,7 +14,7 @@ engine = create_engine(DB_URI, connect_args={"ssl_context": True})
 st.set_page_config(page_title="Seismic Tailing Safety", layout="wide")
 
 st.title("🛡️ Tailing Dam Safety System - Peru")
-st.markdown("Integrated Bishop Stability Model with **Pseudo-static Seismic Analysis**. JUAN A.C. 2026")
+st.markdown("Integrated Bishop Stability Model with **Pseudo-Static Seismic Analysis**. JUAN A.C. 2026")
 
 # 2. FETCH DATA FROM NEON
 @st.cache_data(ttl=60)
