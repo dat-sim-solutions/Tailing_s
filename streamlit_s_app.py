@@ -289,5 +289,11 @@ if not data.empty:
     st.subheader("📋 Raw Data Feed (Neon AWS)")
     st.dataframe(data, use_container_width=True)
 
+    # --- FOOTER ---
+    st.sidebar.divider()
+    st.sidebar.markdown(f"**Developer:** MSc Juan Avalos Carrión")
+    #st.sidebar.caption("Geotechnical Data Engineer, AI + Physics | 2026")
+    #st.sidebar.markdown(f"https://www.linkedin.com/in/juan-a-c-01457674/")
+
 else:
     st.warning("Database empty. Check Neon connection.")
