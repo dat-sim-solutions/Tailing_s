@@ -292,7 +292,7 @@ if not data.empty:
     # --- FOOTER ---
     st.sidebar.divider()
     st.sidebar.markdown(f"**Developer:** MSc Juan Avalos Carrión")
-    st.sidebar.caption("Geotechnical Data Engineer, AI + Physics | 2026")
+    st.sidebar.caption("Geophysics Data Engineer, AI + Physics | 2026")
     st.sidebar.markdown(f"https://www.linkedin.com/in/juan-a-c-01457674/")
 
 else:
