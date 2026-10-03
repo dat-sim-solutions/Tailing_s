@@ -4,10 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 from sqlalchemy import create_engine, text
-from app.models_s import calculate_slope_stability # Using the new models_s
+from app.models_s import calculate_slope_stability, solve_darcy_fem
 import plotly.graph_objects as go
 import time
-import requests
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 # 1. DATABASE CONFIGURATION
 DB_URI = st.secrets["NEON_DB_URI"] 
@@ -16,7 +16,7 @@ engine = create_engine(DB_URI, connect_args={"ssl_context": True})
 st.set_page_config(page_title="Seismic Tailing Safety", layout="wide")
 
 st.title("🛡️ Tailing Dam Safety System - Peru")
-st.markdown("Integrated Bishop Stability Model with **Pseudo-Static Seismic Analysis**. JUAN A.C. 2026")
+st.markdown("Integrated Bishop Stability Model with **Pseudo-Static Seismic Analysis & 2D Darcy FEM Seepage**. JUAN A.C. 2026")
 
 # 2. FETCH DATA FROM NEON
 @st.cache_data(ttl=60)
@@ -39,18 +39,15 @@ def enterprise_iot_layer():
     st.sidebar.markdown("---")
     st.sidebar.subheader("🌐 Enterprise Data Layer")
     
-    # Toggle between SQL Archive and Live SAP Feed
     mode = st.sidebar.radio("Data Source:", ["Neon SQL (Historical)", "SAP HANA (Live IoT)"])
 
     if mode == "SAP HANA (Live IoT)":
         if st.sidebar.button("📡 Sync with SAP Leonardo"):
             with st.sidebar.status("Authenticating with SAP S/4HANA...", expanded=False) as status:
-                time.sleep(1) # Simulated Handshake
+                time.sleep(1)
                 st.write("Extracting OData Service: /Z_PIEZOMETER_READINGS...")
                 time.sleep(1)
                 
-                # The "Secret Sauce": Mocking a JSON Response
-                # This proves you know how SAP structures IoT data
                 live_sap_payload = {
                     "d": {
                         "results": [
@@ -60,7 +57,6 @@ def enterprise_iot_layer():
                     }
                 }
                 
-                # Update your phreatic line variable globally
                 st.session_state['current_pore_pressure'] = live_sap_payload['d']['results'][0]['Level']
                 status.update(label="SAP Sync Active", state="complete")
             
@@ -81,7 +77,7 @@ def plot_fs_gauge(fs_value):
             'borderwidth': 2,
             'bordercolor': "gray",
             'steps': [
-                {'range': [0, 1.1], 'color': '#ff4b4b'}, # Red (Critical for Seismic)
+                {'range': [0, 1.1], 'color': '#ff4b4b'},
                 {'range': [1.1, 1.5], 'color': '#ffa500'}, 
                 {'range': [1.5, 2.5], 'color': '#00cc96'}  
             ],
@@ -96,17 +92,12 @@ def plot_fs_gauge(fs_value):
     return fig
 
 if not data.empty:
-    # --- 1. CALL THE SAP LAYER FIRST ---
     enterprise_iot_layer()
     
-    # --- SIDEBAR CONTROLS ---
     st.sidebar.header("⏱️ Data Selection")
     selected_time = st.sidebar.selectbox("Select Timestamp", data['timestamp'])
     current_row = data[data['timestamp'] == selected_time].iloc[0]
-    #u_latest = current_row['pore_pressure']
 
-    # --- 3. THE "SMART" LOGIC SWITCH ---
-    # Check if we have a live SAP value in session state
     if 'current_pore_pressure' in st.session_state:
         u_latest = st.session_state['current_pore_pressure']
         st.sidebar.info(f"Using LIVE SAP Data: {u_latest} kPa")
@@ -119,7 +110,7 @@ if not data.empty:
                            help="Peruvian Standard E.050: 0.15 for Coast/High Risk")
 
     # --- TABS LAYOUT ---
-    tab1, tab2 = st.tabs(["🎮 Manual Explorer", "🔥 Global Heatmap"])
+    tab1, tab2, tab3 = st.tabs(["🎮 Manual Explorer", "🔥 Global Heatmap", "🌊 Darcy FEM Seepage"])
 
     with tab1:
         st.sidebar.header("🔴 Slip Circle Geometry")
@@ -127,27 +118,30 @@ if not data.empty:
         yc = st.sidebar.slider("Center Y (yc)", 30.0, 150.0, 85.0)
         R = st.sidebar.slider("Radius (R)", 10.0, 100.0, 65.0)
 
-        # Physics Run with kh
-        fs, slices, water_line, history, num, den = calculate_slope_stability(xc, yc, R, u_latest, kh=kh)
+        # Use FEM Phreatic Function if computed, otherwise default Dupuit
+        custom_phreatic = st.session_state.get('fem_phreatic_fn', None)
+
+        fs, slices, water_line, history, num, den = calculate_slope_stability(
+            xc, yc, R, u_latest, kh=kh, custom_phreatic_fn=custom_phreatic
+        )
+
+        if custom_phreatic is not None:
+            st.info("⚡ Bishop Stability Model is currently utilizing the **2D Darcy FEM Phreatic Line**.")
 
         col1, col2 = st.columns([1, 3])
                 
         with col1:
             if fs:
-                abs_fs=abs(fs)
+                abs_fs = abs(fs)
                 st.plotly_chart(plot_fs_gauge(abs(fs)), use_container_width=True)
                 if abs_fs < 1.0: st.error("🚨 SEISMIC COLLAPSE")
                 elif abs_fs < 1.2: st.warning("⚠️ CRITICAL VULNERABILITY")
-                # elif fs <=50: st.success("✅ SEISMICALLY STABLE")
-                elif fs==0: st.error("❌ No Intersection found.")
-                else: st.warning("⚖️ Equilibrium reached: The driving forces are too small to cause a slide for this specific circle.")
+                elif fs == 0: st.error("❌ No Intersection found.")
+                else: st.warning("⚖️ Equilibrium reached.")
             else:
                 st.error("No Intersection")
 
-            if fs < 0:
-                direction = "► Right (Inner/Reservoir)"
-            else:
-                direction = "◄ Left (Outer/Toe)"
+            direction = "► Right (Inner/Reservoir)" if fs < 0 else "◄ Left (Outer/Toe)"
                 
             st.info(f"**Failure Direction:** {direction}")
             st.write(f"**Fs:** {fs}")
@@ -155,7 +149,7 @@ if not data.empty:
             st.write(f"**Head:** {round(u_latest/9.81, 2)} m")
 
         with col2:
-            from matplotlib.lines import Line2D # Necessary for the legend proxy
+            from matplotlib.lines import Line2D
             
             fig, ax = plt.subplots(figsize=(10, 6))
             dx, dy = np.array([40, 70, 100, 130]), np.array([10, 45, 45, 14])
@@ -167,29 +161,21 @@ if not data.empty:
             theta = np.linspace(0, 2*np.pi, 200)
             ax.plot(xc + R*np.cos(theta), yc + R*np.sin(theta), 'r--', alpha=0.4)
             ax.scatter([xc], [yc], color='red', marker='+', s=100)
-            # CREATE PROXY ARTIST FOR LEGEND (The trick for arrows)
+            
             seismic_arrow_legend = Line2D([0], [0], color='red', marker='>', linestyle='-', 
-                                          markersize=10, label=f'Seismic Force (kh={kh})')
+                                         markersize=10, label=f'Seismic Force (kh={kh})')
             
             if slices:
                 for s in slices:
                     ax.bar(s['x_mid'], s['h'], width=s['b'], bottom=s['y_bot'], 
                            color='orange', alpha=0.5, edgecolor='black', linewidth=0.2)
-                    # SEISMIC VECTOR PHYSICS (NEW):
-                    if kh > 0 and s['h'] > 0: # Only draw if there is soil and kh > 0
-                        # Vector Origin: The vertical midpoint of the slice
+                    if kh > 0 and s['h'] > 0:
                         y_midpoint = s['y_bot'] + (s['h'] / 2)
-                        
-                        # Magnitude of the push: proportional to slice height and kh
-                        # (We scale it so it looks good on the plot)
-                        vector_magnitude = - kh * s['h'] * 1.1 # 0.5 
-                        
-                        # Draw the red vector (Fseismic = W * kh)
-                        # Pointing Right (Out of slope)
+                        vector_magnitude = - kh * s['h'] * 1.1 
                         ax.arrow(s['x_mid'], y_midpoint, vector_magnitude, 0, 
                                  head_width=1.5, head_length=1.0, fc='red', ec='red', 
                                  alpha=0.8, zorder=10)
-            # We manually collect the handles to include our proxy seismic patch
+            
             handles, labels = ax.get_legend_handles_labels()
             if kh > 0:
                 handles.append(seismic_arrow_legend)
@@ -205,16 +191,18 @@ if not data.empty:
             grid_x = np.linspace(30, 140, 15)
             grid_y = np.linspace(60, 140, 15)
             fs_matrix = np.empty((len(grid_y), len(grid_x)))
-            fs_matrix[:] = np.nan # Initialize with NaN
+            fs_matrix[:] = np.nan
             progress_text = "Analyzing slope stability surfaces..."
             my_bar = st.progress(0, text=progress_text)
 
+            custom_phreatic = st.session_state.get('fem_phreatic_fn', None)
+
             for i, py in enumerate(grid_y):
                 for j, px in enumerate(grid_x):
-                    val, _, _, _, _, _ = calculate_slope_stability(px, py, R, u_latest, kh=kh)
-                    # Use Absolute value for the heatmap
+                    val, _, _, _, _, _ = calculate_slope_stability(
+                        px, py, R, u_latest, kh=kh, custom_phreatic_fn=custom_phreatic
+                    )
                     abs_val = abs(val) if val is not None else np.nan
-                    # Filter: Ignore zeros (no intersection) and cap stable zones at 5.0
                     if 0.1 < abs_val < 50:
                         fs_matrix[i, j] = min(abs_val, 5.0)
                     else:
@@ -230,66 +218,70 @@ if not data.empty:
             ax_h.set_xlabel("Center X (m)")
             ax_h.set_ylabel("Center Y (m)")
             st.pyplot(fig_h)
+
+    # --- TAB 3: DARCY FEM SEEPAGE SOLVER ---
+    with tab3:
+        st.subheader("🌊 2D Unconfined Stationary Darcy FEM Seepage Simulation")
+        st.markdown("Configure hydraulic conductivity, pool elevation, and geometry to compute hydraulic head ($h$) and pore pressure ($P$).")
+
+        col_fem_p1, col_fem_p2 = st.columns(2)
+        with col_fem_p1:
+            h_pool_val = st.slider("Upstream Tailings Pool Elevation h_pool [m]", 10.0, 45.0, 30.0, step=1.0)
+            k_sat_val = st.select_slider("Hydraulic Conductivity K_sat [m/s]", options=[1e-7, 1e-6, 1e-5, 1e-4, 1e-3], value=1e-5)
+        with col_fem_p2:
+            num_levels = st.slider("Contour Levels", 10, 40, 20)
+            plot_var = st.radio("Field to Plot:", ["Hydraulic Head h [m]", "Pore Pressure P [kPa]"], horizontal=True)
+
+        if st.button("⚙️ Run Darcy FEM Seepage Analysis"):
+            with st.spinner("Assembling Stiffness Matrix K & Solving System K·h = F..."):
+                fem_res = solve_darcy_fem(h_pool=h_pool_val, k_sat=k_sat_val)
+                st.session_state['fem_results'] = fem_res
+                st.session_state['fem_phreatic_fn'] = fem_res['phreatic_fn']
+                st.success("Darcy FEM Simulation Completed!")
+
+        if 'fem_results' in st.session_state:
+            fem_res = st.session_state['fem_results']
             
-            min_found = np.nanmin(fs_matrix)
-            if min_found < 1.0:
-                st.error(f"⚠️ **DANGER:** The most critical center found has an FS of: **{min_found:.3f}**")
-            else:
-                st.success(f"✅ **Safe:** The most critical center found has an FS of: **{min_found:.3f}**")
+            fig_fem, ax_fem = plt.subplots(figsize=(12, 6))
+            
+            field_data = fem_res['h_fem'] if "Hydraulic Head" in plot_var else fem_res['P_kpa']
+            field_label = "Total Hydraulic Head h [m]" if "Hydraulic Head" in plot_var else "Pore Pressure P [kPa]"
+            
+            cf = ax_fem.tricontourf(fem_res['triangulation'], field_data, levels=num_levels, cmap="viridis")
+            cs = ax_fem.tricontour(fem_res['triangulation'], field_data, levels=15, colors="white", linewidths=0.5, alpha=0.7)
+            ax_fem.clabel(cs, inline=True, fontsize=8, fmt="%.1f")
+            
+            # Overlay Phreatic Line (psi = 0)
+            ax_fem.plot(fem_res['x_phreatic'], fem_res['y_phreatic'], 'r--', linewidth=2.5, label="Phreatic Line (ψ = 0)")
+            
+            ax_fem.set_title(f"Darcy FEM Seepage: {field_label}")
+            ax_fem.set_xlabel("Distance [m]")
+            ax_fem.set_ylabel("Elevation [m]")
+            ax_fem.set_aspect("equal")
+            ax_fem.legend(loc="upper left")
 
-    # with st.expander("📈 View Solver Convergence"):
-    st.write("### 📈 Solver Convergence")
-    fig_conv, ax_conv = plt.subplots(figsize=(6, 2))
-    ax_conv.plot(history, marker='o', linestyle='-', color='purple')
-    ax_conv.set_title("Bishop Iteration Path")
-    ax_conv.set_xlabel("Iteration Step")
-    ax_conv.set_ylabel("Factor of Safety")
-    ax_conv.grid(True, alpha=0.3)
-    st.pyplot(fig_conv)
-    st.write(f"Converged in **{len(history)-1}** steps.")
+            # Proportionate Colorbar Lock
+            divider = make_axes_locatable(ax_fem)
+            cax = divider.append_axes("right", size="2%", pad=0.15)
+            cbar = fig_fem.colorbar(cf, cax=cax)
+            cbar.set_label(field_label)
 
-    st.write("### 📐 Slice Angle (Slip Inclination) Distribution")
-    # 1. Extract data from the list of dictionaries
-    x_coords = [s['x_mid'] for s in slices]
-    alphas = [np.degrees(s['alpha_rad']) for s in slices] # alpha_rad from your list
-    # 2. Create the plot
-    fig_alpha, ax_alpha = plt.subplots(figsize=(8, 4))
-    ax_alpha.plot(x_coords, alphas, marker='o', color='teal', label='Base Angle (α)')
-    ax_alpha.axhline(0, color='black', linestyle='--', alpha=0.5)
-    # Labels and Styling
-    ax_alpha.set_xlabel("X-Coordinate of Slice (m)"); ax_alpha.set_ylabel("Angle α (degrees)")
-    ax_alpha.set_title("Rotational Tendency per Slice")
-    ax_alpha.grid(True, linestyle=':', alpha=0.6)
-    # Fill the area to show Driving vs Resisting zones
-    ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) > 0), 
-                          color='salmon', alpha=0.5, label='CW-Driving Zone ($\circlearrowright$)')
-    ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) < 0), 
-                          color='skyblue', alpha=0.5, label='CCW-Driving Zone ($\circlearrowleft$)')
-    
-    ax_alpha.legend()
-    st.pyplot(fig_alpha) # !!
+            plt.tight_layout()
+            st.pyplot(fig_fem)
 
-    st.write("### ⚖️ Force Balance Analysis") # !!!
-    # Display as Metrics for quick reading
+            st.success("✅ Phreatic Line automatically coupled to Tab 1 (Manual Explorer) and Tab 2 (Global Heatmap)!")
+
+    # --- FOOTER & DIAGNOSTICS ---
+    st.write("---")
+    st.write("### 📈 Solver Convergence & Force Balance Analysis")
     col1, col2, col3 = st.columns(3)
     col1.metric("Resisting (Num)", f"{num:.2f} kN")
     col2.metric("Driving (Den)", f"{den:.2f} kN")
     col3.metric("Final FS", f"{fs:.3f}")
-    # 2. Create a Comparison Bar Chart
-    #import pandas as pd
-    #force_data = pd.DataFrame({
-    #    "Force Type": ["Resisting (Strength)", "Driving (Load)"],
-    #    "Value [kN]": [num, den]
-    #})
-    # Use st.bar_chart or Plotly for a more professional look
-    #st.bar_chart(data=force_data, x="Force Type", y="Value [kN]", color="#2e7d32" if fs > 1.5 else "#d32f2f")
-    #st.caption("The Factor of Safety is simply the Green bar divided by the Red bar.") # !!
-    
-    st.write("---")
+
     st.subheader("📋 Raw Data Feed (Neon AWS)")
     st.dataframe(data, use_container_width=True)
 
-    # --- FOOTER ---
     st.sidebar.divider()
     st.sidebar.markdown(f"**Developer:** MSc Juan Avalos Carrión")
     st.sidebar.caption("Geophysics Data Engineer, AI + Physics | 2026")
