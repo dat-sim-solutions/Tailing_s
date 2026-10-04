@@ -53,23 +53,21 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
 
 
 def solve_unconfined_tailings_fem(
-    nx=30,
-    ny=15,
-    x_bot_left=0.0,
-    x_bot_right=300.0,
-    x_top_left=-200.0,
-    x_top_right=300.0,
-    y_base=0.0,
-    y_top=100.0,
+    nx=40,
+    ny=20,
+    Lx_bot=300.0,
+    Lx_top=500.0,
+    H_dam=100.0,
     K_sat=1e-5,
-    h_pool=90.0,
-    max_iter=35,
+    h_rain_pool=102.0,
+    max_iter=40,
     tol=1e-3,
 ):
     """
-    Solves steady-state unconfined seepage inside the trapezoidal domain defined by corners:
-    (0,0), (300,0), (300,100), (-200,100)
+    Solves steady-state unconfined seepage matching run_post_rain_seepage BCs inside 
+    the inverted trapezoidal domain defined by corners: (0,0), (300,0), (300,100), (-200,100).
     """
+    L_slope = Lx_top - Lx_bot  # 200m offset -> x_top_left = -200
     xi_grid = np.linspace(0, 1, nx + 1)
     eta_grid = np.linspace(0, 1, ny + 1)
 
@@ -77,14 +75,11 @@ def solve_unconfined_tailings_fem(
     node_id_map = np.zeros((ny + 1, nx + 1), dtype=int)
     current_id = 0
 
-    # Map rectangular isoparametric grid to trapezoid domain
+    # Build Inverted Trapezoid Mesh
     for j, eta in enumerate(eta_grid):
-        y_val = y_base + eta * (y_top - y_base)
-
-        # Left boundary along sloped face (0,0 -> -200,100)
-        x_left = x_bot_left + eta * (x_top_left - x_bot_left)
-        # Right boundary (300,0 -> 300,100)
-        x_right = x_bot_right + eta * (x_top_right - x_bot_right)
+        y_val = eta * H_dam
+        x_left = -eta * L_slope
+        x_right = Lx_bot
 
         for i, xi in enumerate(xi_grid):
             x_val = x_left + xi * (x_right - x_left)
@@ -99,48 +94,43 @@ def solve_unconfined_tailings_fem(
     elements = []
     for j in range(ny):
         for i in range(nx):
-            n1 = node_id_map[j, i]
-            n2 = node_id_map[j, i + 1]
-            n3 = node_id_map[j + 1, i + 1]
-            n4 = node_id_map[j + 1, i]
-            elements.append([n1, n2, n3, n4])
+            elements.append(
+                [
+                    node_id_map[j, i],
+                    node_id_map[j, i + 1],
+                    node_id_map[j + 1, i + 1],
+                    node_id_map[j + 1, i],
+                ]
+            )
 
-    # Boundaries
-    sloping_left_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
-    sloping_right_nodes = [node_id_map[j, nx] for j in range(ny + 1)]
+    # Identify Boundary Nodes
     top_nodes = [node_id_map[ny, i] for i in range(nx + 1)]
+    sloping_left_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
+
+    # Pool boundary: Only nodes on the top surface where x >= 50m
+    pool_nodes = [n for n in top_nodes if node_coords[n, 0] >= 50.0]
 
     # Initial head guess
-    h_upstream = y_base + h_pool
-    h_fem = node_coords[:, 1].copy() + (h_upstream - node_coords[:, 1]) * 0.5
+    h_fem = node_coords[:, 1] + 5.0
 
-    # Picard Iteration Loop
+    # Picard Iterations
     for it in range(max_iter):
         h_old = h_fem.copy()
 
         fixed_nodes = []
         fixed_vals = {}
 
-        # 1. Top reservoir pool boundary condition
-        for node in top_nodes:
-            z_node = node_coords[node, 1]
-            if z_node <= h_upstream:
-                fixed_nodes.append(node)
-                fixed_vals[node] = h_upstream
+        # 1. Fix pool head (top surface x >= 50m)
+        for n in pool_nodes:
+            fixed_nodes.append(n)
+            fixed_vals[n] = h_rain_pool
 
-        # 2. Left sloping face boundary condition
-        for node in sloping_left_nodes:
-            z_node = node_coords[node, 1]
-            if z_node <= h_upstream:
-                fixed_nodes.append(node)
-                fixed_vals[node] = h_upstream
-
-        # 3. Downstream / Right exit face boundary condition (h = z)
-        for node in sloping_right_nodes:
-            z_node = node_coords[node, 1]
-            if h_fem[node] >= z_node or node == node_id_map[0, nx]:
-                fixed_nodes.append(node)
-                fixed_vals[node] = z_node
+        # 2. Seepage face on sloping wall (h = z if saturated)
+        for n in sloping_left_nodes:
+            z_n = node_coords[n, 1]
+            if h_fem[n] >= z_n or n == node_id_map[0, 0]:
+                fixed_nodes.append(n)
+                fixed_vals[n] = z_n
 
         fixed_nodes = list(set(fixed_nodes))
         free_nodes = [n for n in range(num_nodes) if n not in fixed_nodes]
@@ -148,37 +138,33 @@ def solve_unconfined_tailings_fem(
         # Stiffness Assembly
         K_global = np.zeros((num_nodes, num_nodes))
         for elem in elements:
-            x_e = node_coords[elem, 0]
-            y_e = node_coords[elem, 1]
-            h_elem = h_fem[elem]
-
-            Ke = quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem)
-
+            Ke = quad_element_matrices_unconfined(
+                node_coords[elem, 0], node_coords[elem, 1], K_sat, h_fem[elem]
+            )
             for i in range(4):
                 for j in range(4):
                     K_global[elem[i], elem[j]] += Ke[i, j]
 
-        # Solve system K * h = RHS
+        # Solve System
         RHS = np.zeros(num_nodes)
-        for node in fixed_nodes:
-            RHS[free_nodes] -= K_global[free_nodes, node] * fixed_vals[node]
+        for n in fixed_nodes:
+            RHS[free_nodes] -= K_global[free_nodes, n] * fixed_vals[n]
 
         h_free = np.linalg.solve(
             K_global[np.ix_(free_nodes, free_nodes)], RHS[free_nodes]
         )
 
-        for node in fixed_nodes:
-            h_fem[node] = fixed_vals[node]
+        for n in fixed_nodes:
+            h_fem[n] = fixed_vals[n]
         h_fem[free_nodes] = h_free
 
         # Convergence Check
-        diff = np.max(np.abs(h_fem - h_old))
-        if diff < tol:
+        if np.max(np.abs(h_fem - h_old)) < tol:
             break
 
     # Extract Phreatic Surface Line (psi = 0)
     psi = h_fem - node_coords[:, 1]
-    x_phreatic = np.linspace(x_top_left, x_bot_right, 100)
+    x_phreatic = np.linspace(-L_slope, Lx_bot, 100)
     y_phreatic_vals = []
 
     for x_q in x_phreatic:
@@ -193,12 +179,12 @@ def solve_unconfined_tailings_fem(
             elif np.all(sub_psi > 0):
                 y_phreatic_vals.append(np.max(sub_nodes[:, 1]))
             else:
-                y_phreatic_vals.append(y_base)
+                y_phreatic_vals.append(0.0)
         else:
-            y_phreatic_vals.append(y_base)
+            y_phreatic_vals.append(0.0)
 
     def fem_phreatic_fn(x):
-        return np.interp(x, x_phreatic, y_phreatic_vals, left=y_base, right=y_base)
+        return np.interp(x, x_phreatic, y_phreatic_vals, left=0.0, right=0.0)
 
     triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
     gamma_w = 9.81
@@ -217,9 +203,9 @@ def solve_unconfined_tailings_fem(
     }
 
 
-def solve_darcy_fem(h_pool=90.0, k_sat=1e-5):
+def solve_darcy_fem(h_pool=102.0, k_sat=1e-5):
     """Wrapper function maintaining compatibility with application calls."""
-    return solve_unconfined_tailings_fem(h_pool=h_pool, K_sat=k_sat)
+    return solve_unconfined_tailings_fem(h_rain_pool=h_pool, K_sat=k_sat)
 
 
 # =====================================================================
@@ -341,7 +327,7 @@ def calculate_slope_stability(
 # 3. DIRECT SCRIPT EXECUTION TEST
 # =====================================================================
 if __name__ == "__main__":
-    fem_res = solve_unconfined_tailings_fem(h_pool=90.0, K_sat=1e-5)
+    fem_res = solve_unconfined_tailings_fem(h_rain_pool=102.0, K_sat=1e-5)
 
     fig, ax = plt.subplots(figsize=(10, 5))
     cf = ax.tricontourf(fem_res["triangulation"], fem_res["h_fem"], levels=20, cmap="viridis")
@@ -357,7 +343,7 @@ if __name__ == "__main__":
             alpha=0.3,
         )
 
-    ax.set_title("Unconfined Darcy FEM Seepage - Corner Coordinates: (0,0), (300,0), (300,100), (-200,100)")
+    ax.set_title("Post-Rain Unconfined FEM Seepage (Pool x >= 50m, h = 102m)")
     ax.set_xlabel("Distance [m]")
     ax.set_ylabel("Elevation [m]")
     ax.set_aspect("equal")
