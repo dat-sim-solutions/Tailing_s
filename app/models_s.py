@@ -78,13 +78,13 @@ def solve_unconfined_tailings_fem(
     node_id_map = np.zeros((ny + 1, nx + 1), dtype=int)
     current_id = 0
 
-    # Stretch grid vertically and horizontally to fit exact dam geometry
+    # Map rectangular isoparametric grid to embankment cross-section
     for j, eta in enumerate(eta_grid):
         y_val = y_base + eta * (y_top - y_base)
-        
-        # Left boundary along upstream slope (x_toe_left -> x_crest_left)
+
+        # Upstream slope line (x_toe_left -> x_crest_left)
         x_left = x_toe_left + eta * (x_crest_left - x_toe_left)
-        # Right boundary along downstream slope (x_toe_right -> x_crest_right)
+        # Downstream slope line (x_toe_right -> x_crest_right)
         x_right = x_toe_right - eta * (x_toe_right - x_crest_right)
 
         for i, xi in enumerate(xi_grid):
@@ -96,7 +96,7 @@ def solve_unconfined_tailings_fem(
     node_coords = np.array(node_coords)
     num_nodes = len(node_coords)
 
-    # Elements construction
+    # Element connectivity
     elements = []
     for j in range(ny):
         for i in range(nx):
@@ -106,37 +106,36 @@ def solve_unconfined_tailings_fem(
             n4 = node_id_map[j + 1, i]
             elements.append([n1, n2, n3, n4])
 
-    # Boundary node sets
+    # Boundaries
     sloping_left_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
     sloping_right_nodes = [node_id_map[j, nx] for j in range(ny + 1)]
     top_nodes = [node_id_map[ny, i] for i in range(nx + 1)]
 
-    # Initial head guess (linear distribution)
+    # Initial head guess
     h_upstream = y_base + h_pool
     h_fem = node_coords[:, 1].copy() + (h_upstream - node_coords[:, 1]) * 0.5
 
-    # Nonlinear iteration loop for unconfined phreatic line
+    # Picard Iteration Loop
     for it in range(max_iter):
         h_old = h_fem.copy()
 
         fixed_nodes = []
         fixed_vals = {}
 
-        # 1. Upstream reservoir submerged face boundary condition
+        # 1. Reservoir boundary conditions
         for node in sloping_left_nodes:
             z_node = node_coords[node, 1]
             if z_node <= h_upstream:
                 fixed_nodes.append(node)
                 fixed_vals[node] = h_upstream
 
-        # Top reservoir pool boundary condition if submerged
         for node in top_nodes:
             z_node = node_coords[node, 1]
             if z_node <= h_upstream:
                 fixed_nodes.append(node)
                 fixed_vals[node] = h_upstream
 
-        # 2. Downstream seepage face boundary condition (h = z)
+        # 2. Downstream seepage face (h = z)
         for node in sloping_right_nodes:
             z_node = node_coords[node, 1]
             if h_fem[node] >= z_node or node == node_id_map[0, nx]:
@@ -146,7 +145,7 @@ def solve_unconfined_tailings_fem(
         fixed_nodes = list(set(fixed_nodes))
         free_nodes = [n for n in range(num_nodes) if n not in fixed_nodes]
 
-        # Assemble Global Stiffness Matrix
+        # Stiffness Assembly
         K_global = np.zeros((num_nodes, num_nodes))
         for elem in elements:
             x_e = node_coords[elem, 0]
@@ -172,12 +171,12 @@ def solve_unconfined_tailings_fem(
             h_fem[node] = fixed_vals[node]
         h_fem[free_nodes] = h_free
 
-        # Check convergence
+        # Convergence Check
         diff = np.max(np.abs(h_fem - h_old))
         if diff < tol:
             break
 
-    # Construct continuous phreatic line function for Bishop coupling
+    # Extract Phreatic Surface Line (psi = 0)
     psi = h_fem - node_coords[:, 1]
     x_phreatic = np.linspace(x_toe_left, x_toe_right, 100)
     y_phreatic_vals = []
@@ -201,7 +200,6 @@ def solve_unconfined_tailings_fem(
     def fem_phreatic_fn(x):
         return np.interp(x, x_phreatic, y_phreatic_vals, left=y_base, right=y_base)
 
-    # Return structured dict compatible with Streamlit Tab 3 rendering
     triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
     gamma_w = 9.81
     P_kpa = np.maximum(0, psi * gamma_w)
@@ -219,8 +217,8 @@ def solve_unconfined_tailings_fem(
     }
 
 
-# Wrapper function for backward compatibility with existing callers
 def solve_darcy_fem(h_pool=30.0, k_sat=1e-5):
+    """Wrapper function maintaining compatibility with application calls."""
     return solve_unconfined_tailings_fem(h_pool=h_pool, K_sat=k_sat)
 
 
@@ -359,7 +357,7 @@ if __name__ == "__main__":
             alpha=0.3,
         )
 
-    ax.set_title("Unconfined Darcy FEM Seepage - Dam Cross-Section Geometry")
+    ax.set_title("Unconfined Darcy FEM Seepage - Fitted Embankment Geometry")
     ax.set_xlabel("Distance [m]")
     ax.set_ylabel("Elevation [m]")
     ax.set_aspect("equal")
