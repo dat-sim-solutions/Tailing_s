@@ -162,32 +162,33 @@ def solve_darcy_fem(h_pool=102.0, k_sat=1e-5):
     """
     node_coords, elements, h_fem = run_post_rain_seepage()
     psi = h_fem - node_coords[:, 1] # z_coords
-
-    # Extract Phreatic Line (psi = 0)
-    x_min, x_max = np.min(node_coords[:, 0]), np.max(node_coords[:, 0])
-    x_phreatic = np.linspace(x_min, x_max, 100)
-    y_phreatic_vals = []
-
-    for x_q in x_phreatic:
-        mask = np.abs(node_coords[:, 0] - x_q) < 10.0
-        if np.any(mask):
-            sub_nodes = node_coords[mask]
-            sub_psi = psi[mask]
-            if np.min(sub_psi) <= 0 <= np.max(sub_psi):
-                sort_idx = np.argsort(sub_nodes[:, 1])
-                y_zero = np.interp(0, sub_psi[sort_idx], sub_nodes[sort_idx, 1])
-                y_phreatic_vals.append(y_zero)
-            elif np.all(sub_psi > 0):
-                y_phreatic_vals.append(np.max(sub_nodes[:, 1]))
-            else:
-                y_phreatic_vals.append(0.0)
-        else:
-            y_phreatic_vals.append(0.0)
-
-    def fem_phreatic_fn(x):
-        return np.interp(x, x_phreatic, y_phreatic_vals, left=0.0, right=0.0)
-
     triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
+
+    # Extract the true zero contour line (phreatic surface psi = 0) directly via Matplotlib
+    fig_temp, ax_temp = plt.subplots()
+    cs = ax_temp.tricontour(triangulation, psi, levels=[0])
+    
+    x_phreatic, y_phreatic = [], []
+    if len(cs.collections[0].get_paths()) > 0:
+        p = cs.collections[0].get_paths()[0]
+        v = p.vertices
+        x_phreatic = v[:, 0]
+        y_phreatic = v[:, 1]
+    plt.close(fig_temp)  # Clean up temporary figure
+
+    # Fallback interpolation function for Bishop analysis
+    if len(x_phreatic) > 1:
+        # Sort by x for monotonic interpolation
+        sort_idx = np.argsort(x_phreatic)
+        x_p_sorted = x_phreatic[sort_idx]
+        y_p_sorted = y_phreatic[sort_idx]
+        
+        def fem_phreatic_fn(x):
+            return np.interp(x, x_p_sorted, y_p_sorted, left=y_p_sorted[0], right=y_p_sorted[-1])
+    else:
+        def fem_phreatic_fn(x):
+            return 0.0
+            
     gamma_w = 9.81
     P_kpa = np.maximum(0, psi * gamma_w)
 
