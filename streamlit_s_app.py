@@ -8,7 +8,6 @@ from app.models_s import calculate_slope_stability, solve_darcy_fem
 import plotly.graph_objects as go
 import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.lines import Line2D
 
 # 1. DATABASE CONFIGURATION
 DB_URI = st.secrets["NEON_DB_URI"] 
@@ -95,7 +94,7 @@ def plot_fs_gauge(fs_value):
 if not data.empty:
     enterprise_iot_layer()
     
-    st.sidebar.header("⏱️ Data Selection")
+    st.sidebar.header("⏱️️ Data Selection")
     selected_time = st.sidebar.selectbox("Select Timestamp", data['timestamp'])
     current_row = data[data['timestamp'] == selected_time].iloc[0]
 
@@ -113,13 +112,16 @@ if not data.empty:
     # --- TABS LAYOUT ---
     tab1, tab2, tab3 = st.tabs(["🎮 Manual Explorer", "🔥 Global Heatmap", "🌊 Darcy FEM Seepage"])
 
+    # -----------------------------------------------------------------
+    # TAB 1: MANUAL EXPLORER
+    # -----------------------------------------------------------------
     with tab1:
         st.sidebar.header("🔴 Slip Circle Geometry")
         xc = st.sidebar.slider("Center X (xc)", 20.0, 150.0, 75.0)
         yc = st.sidebar.slider("Center Y (yc)", 30.0, 150.0, 85.0)
         R = st.sidebar.slider("Radius (R)", 10.0, 100.0, 65.0)
 
-        # Retrieve FEM Phreatic Line Function if available
+        # Retrieve FEM Phreatic Function if calculated in Tab 3
         custom_phreatic = st.session_state.get('fem_phreatic_fn', None)
 
         fs, slices, water_line, history, num, den = calculate_slope_stability(
@@ -150,6 +152,8 @@ if not data.empty:
             st.write(f"**Head:** {round(u_latest/9.81, 2)} m")
 
         with col2:
+            from matplotlib.lines import Line2D
+            
             fig, ax = plt.subplots(figsize=(10, 6))
             dx, dy = np.array([40, 70, 100, 130]), np.array([10, 45, 45, 14])
             ax.plot(dx, dy, 'k-', linewidth=3)
@@ -182,7 +186,10 @@ if not data.empty:
             ax.set_ylim(0, 120); ax.set_xlim(20, 150); ax.set_aspect('equal')
             ax.legend(handles=handles, loc='upper left'); ax.grid(True, alpha=0.2)
             st.pyplot(fig)
-            
+
+    # -----------------------------------------------------------------
+    # TAB 2: GLOBAL HEATMAP
+    # -----------------------------------------------------------------
     with tab2:
         st.subheader("🌐 Global Stability Grid Search")
         st.write("Calculates FS for a grid of centers using the current Radius.")
@@ -218,7 +225,9 @@ if not data.empty:
             ax_h.set_ylabel("Center Y (m)")
             st.pyplot(fig_h)
 
-    # --- TAB 3: DARCY FEM SEEPAGE SOLVER ---
+    # -----------------------------------------------------------------
+    # TAB 3: DARCY FEM SEEPAGE SOLVER
+    # -----------------------------------------------------------------
     with tab3:
         st.subheader("🌊 2D Unconfined Stationary Darcy FEM Seepage Simulation")
         st.markdown("Configure hydraulic conductivity, pool elevation, and geometry to compute hydraulic head ($h$) and pore pressure ($P$).")
@@ -259,7 +268,7 @@ if not data.empty:
             ax_fem.set_aspect("equal")
             ax_fem.legend(loc="upper left")
 
-            # Proportionate Colorbar Lock
+            # Colorbar alignment
             divider = make_axes_locatable(ax_fem)
             cax = divider.append_axes("right", size="2%", pad=0.15)
             cbar = fig_fem.colorbar(cf, cax=cax)
