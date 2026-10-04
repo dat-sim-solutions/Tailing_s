@@ -15,7 +15,7 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
 
     for xi, w_xi in zip(gauss_pts, weights):
         for eta, w_eta in zip(gauss_pts, weights):
-            # Shape functions & derivatives
+            # 2D Quad Shape functions & derivatives
             N = 0.25 * np.array(
                 [
                     (1 - xi) * (1 - eta),
@@ -27,12 +27,12 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
             dN_dxi = 0.25 * np.array([-(1 - eta), (1 - eta), (1 + eta), -(1 + eta)])
             dN_deta = 0.25 * np.array([-(1 - xi), -(1 + xi), (1 + xi), (1 - xi)])
 
-            # Evaluate elevation (z) and head (h) at current Gauss point
+            # Compute elevation z and hydraulic head h at Gauss point
             z_gauss = np.dot(N, y_e)
             h_gauss = np.dot(N, h_elem_nodes)
             psi_gauss = h_gauss - z_gauss  # Pressure head psi = h - z
 
-            # Relative permeability cutoff for unsaturated zone
+            # Relative permeability function (unsaturated cutoff)
             kr = 1.0 if psi_gauss >= 0.0 else 1e-4
 
             J = np.zeros((2, 2))
@@ -60,11 +60,11 @@ def solve_unconfined_tailings_fem(
     H_dam=35.0,
     K_sat=1e-5,
     h_pool=30.0,
-    max_iter=30,
+    max_iter=40,
     tol=1e-3,
 ):
     """
-    Solves 2D unconfined steady seepage over the exact trapezoidal profile of the dam:
+    Solves 2D unconfined steady seepage over the exact trapezoidal domain of the dam:
     - Upstream slope: (40, 10) to (70, 45)
     - Crest plateau: (70, 45) to (100, 45)
     - Downstream slope: (100, 45) to (130, 14)
@@ -75,7 +75,7 @@ def solve_unconfined_tailings_fem(
     x_crest_right = 100.0
     x_toe_right, y_toe_right = 130.0, 14.0
 
-    # Upper boundary elevation profile y = f(x)
+    # Trapezoid top surface profile y = f(x)
     def get_top_surface_y(x):
         if x <= x_crest_left:
             return np.interp(x, [x_toe_left, x_crest_left], [y_base, y_top])
@@ -84,7 +84,7 @@ def solve_unconfined_tailings_fem(
         else:
             return np.interp(x, [x_crest_right, x_toe_right], [y_top, y_toe_right])
 
-    # Build structured nodal grid mapped strictly inside the trapezoid
+    # Structured quad mesh mapped inside the trapezoid
     x_grid = np.linspace(x_toe_left, x_toe_right, nx + 1)
     eta_grid = np.linspace(0, 1, ny + 1)
 
@@ -95,7 +95,6 @@ def solve_unconfined_tailings_fem(
     for j, eta in enumerate(eta_grid):
         for i, x_val in enumerate(x_grid):
             y_surface = get_top_surface_y(x_val)
-            # Map eta linearly between foundation base (10m) and upper surface
             y_val = y_base + eta * (y_surface - y_base)
             node_coords.append([x_val, y_val])
             node_id_map[j, i] = current_id
@@ -104,7 +103,7 @@ def solve_unconfined_tailings_fem(
     node_coords = np.array(node_coords)
     num_nodes = len(node_coords)
 
-    # Construct Quad elements
+    # Elements construction
     elements = []
     for j in range(ny):
         for i in range(nx):
@@ -114,36 +113,49 @@ def solve_unconfined_tailings_fem(
             n4 = node_id_map[j + 1, i]
             elements.append([n1, n2, n3, n4])
 
-    # Boundary node sets
-    top_nodes = [node_id_map[ny, i] for i in range(nx + 1)]
+    # Node groups for boundary conditions
     left_slope_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
+    right_slope_nodes = [node_id_map[j, nx] for j in range(ny + 1)]
+    top_nodes = [node_id_map[ny, i] for i in range(nx + 1)]
 
-    # Initial head estimation
+    # Initial hydraulic head guess
     h_fem = node_coords[:, 1].copy() + (h_pool - node_coords[:, 1]) * 0.5
 
-    # Non-linear iteration solver loop
+    # Non-linear fixed-point iteration loop
     for it in range(max_iter):
         h_old = h_fem.copy()
 
         fixed_nodes = []
         fixed_vals = {}
 
-        # 1. Reservoir boundary condition
-        h_upstream_boundary = y_base + h_pool
+        # 1. Upstream Reservoir Pool Boundary Condition (h = y_base + h_pool)
+        h_pool_elev = y_base + h_pool
         for idx in range(nx + 1):
             node = node_id_map[ny, idx]
-            if node_coords[node, 0] <= x_crest_left:
-                fixed_nodes.append(node)
-                fixed_vals[node] = min(h_upstream_boundary, y_top)
+            x_node = node_coords[node, 0]
+            if x_node <= x_crest_left:
+                z_node = node_coords[node, 1]
+                if z_node <= h_pool_elev:
+                    fixed_nodes.append(node)
+                    fixed_vals[node] = h_pool_elev
 
         for node in left_slope_nodes:
-            fixed_nodes.append(node)
-            fixed_vals[node] = min(h_upstream_boundary, node_coords[node, 1])
+            z_node = node_coords[node, 1]
+            if z_node <= h_pool_elev:
+                fixed_nodes.append(node)
+                fixed_vals[node] = h_pool_elev
+
+        # 2. Downstream Seepage Face Boundary Condition (h = z when wet)
+        for node in right_slope_nodes:
+            z_node = node_coords[node, 1]
+            if h_fem[node] >= z_node or node == node_id_map[0, nx]:
+                fixed_nodes.append(node)
+                fixed_vals[node] = z_node
 
         fixed_nodes = list(set(fixed_nodes))
         free_nodes = [n for n in range(num_nodes) if n not in fixed_nodes]
 
-        # Global assembly
+        # Assemble Global Stiffness Matrix
         K_global = np.zeros((num_nodes, num_nodes))
         for elem in elements:
             x_e = node_coords[elem, 0]
@@ -156,7 +168,7 @@ def solve_unconfined_tailings_fem(
                 for j_loc in range(4):
                     K_global[elem[i_loc], elem[j_loc]] += Ke[i_loc, j_loc]
 
-        # Solve system
+        # Apply Dirichlet boundary conditions and solve
         RHS = np.zeros(num_nodes)
         for node in fixed_nodes:
             RHS[free_nodes] -= K_global[free_nodes, node] * fixed_vals[node]
@@ -169,7 +181,7 @@ def solve_unconfined_tailings_fem(
                 h_fem[node] = fixed_vals[node]
             h_fem[free_nodes] = h_free
 
-        # Convergence test
+        # Check convergence
         diff = np.max(np.abs(h_fem - h_old))
         if diff < tol:
             break
