@@ -7,7 +7,7 @@ import numpy as np
 # 1. FEM UNCONFINED SEEPAGE FUNCTIONS
 # =====================================================================
 def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
-    """Computes quadrilateral element stiffness matrix with unconfined cutoff."""
+    """Computes quadrilateral element stiffness matrix with unconfined cutoff for unsaturated nodes."""
     gauss_pts = [-1.0 / np.sqrt(3), 1.0 / np.sqrt(3)]
     weights = [1.0, 1.0]
 
@@ -15,7 +15,7 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
 
     for xi, w_xi in zip(gauss_pts, weights):
         for eta, w_eta in zip(gauss_pts, weights):
-            # 2D Quad Shape functions & derivatives
+            # Shape functions & derivatives
             N = 0.25 * np.array(
                 [
                     (1 - xi) * (1 - eta),
@@ -27,12 +27,12 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
             dN_dxi = 0.25 * np.array([-(1 - eta), (1 - eta), (1 + eta), -(1 + eta)])
             dN_deta = 0.25 * np.array([-(1 - xi), -(1 + xi), (1 + xi), (1 - xi)])
 
-            # Compute elevation z and hydraulic head h at Gauss point
+            # Evaluate elevation (z) and head (h) at current Gauss point
             z_gauss = np.dot(N, y_e)
             h_gauss = np.dot(N, h_elem_nodes)
             psi_gauss = h_gauss - z_gauss  # Pressure head psi = h - z
 
-            # Relative permeability function (unsaturated cutoff)
+            # Relative permeability cutoff (unsaturated zone)
             kr = 1.0 if psi_gauss >= 0.0 else 1e-4
 
             J = np.zeros((2, 2))
@@ -55,47 +55,40 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
 def solve_unconfined_tailings_fem(
     nx=30,
     ny=15,
-    Lx_bot=130.0,
-    Lx_top=30.0,
-    H_dam=35.0,
+    x_toe_left=40.0,
+    x_crest_left=70.0,
+    x_crest_right=100.0,
+    x_toe_right=130.0,
+    y_base=10.0,
+    y_top=45.0,
     K_sat=1e-5,
     h_pool=30.0,
-    max_iter=40,
+    max_iter=35,
     tol=1e-3,
 ):
     """
-    Solves 2D unconfined steady seepage over the exact trapezoidal domain of the dam:
-    - Upstream slope: (40, 10) to (70, 45)
-    - Crest plateau: (70, 45) to (100, 45)
-    - Downstream slope: (100, 45) to (130, 14)
-    - Base foundation: y = 10 m
+    Solves steady-state unconfined seepage inside the true embankment geometry:
+    Base: x in [40, 130] at y = 10
+    Crest: x in [70, 100] at y = 45
     """
-    x_toe_left, y_base = 40.0, 10.0
-    x_crest_left, y_top = 70.0, 45.0
-    x_crest_right = 100.0
-    x_toe_right, y_toe_right = 130.0, 14.0
-
-    # Trapezoid top surface profile y = f(x)
-    def get_top_surface_y(x):
-        if x <= x_crest_left:
-            return np.interp(x, [x_toe_left, x_crest_left], [y_base, y_top])
-        elif x <= x_crest_right:
-            return y_top
-        else:
-            return np.interp(x, [x_crest_right, x_toe_right], [y_top, y_toe_right])
-
-    # Structured quad mesh mapped inside the trapezoid
-    x_grid = np.linspace(x_toe_left, x_toe_right, nx + 1)
+    xi_grid = np.linspace(0, 1, nx + 1)
     eta_grid = np.linspace(0, 1, ny + 1)
 
     node_coords = []
     node_id_map = np.zeros((ny + 1, nx + 1), dtype=int)
     current_id = 0
 
+    # Stretch grid vertically and horizontally to fit exact dam geometry
     for j, eta in enumerate(eta_grid):
-        for i, x_val in enumerate(x_grid):
-            y_surface = get_top_surface_y(x_val)
-            y_val = y_base + eta * (y_surface - y_base)
+        y_val = y_base + eta * (y_top - y_base)
+        
+        # Left boundary along upstream slope (x_toe_left -> x_crest_left)
+        x_left = x_toe_left + eta * (x_crest_left - x_toe_left)
+        # Right boundary along downstream slope (x_toe_right -> x_crest_right)
+        x_right = x_toe_right - eta * (x_toe_right - x_crest_right)
+
+        for i, xi in enumerate(xi_grid):
+            x_val = x_left + xi * (x_right - x_left)
             node_coords.append([x_val, y_val])
             node_id_map[j, i] = current_id
             current_id += 1
@@ -113,40 +106,38 @@ def solve_unconfined_tailings_fem(
             n4 = node_id_map[j + 1, i]
             elements.append([n1, n2, n3, n4])
 
-    # Node groups for boundary conditions
-    left_slope_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
-    right_slope_nodes = [node_id_map[j, nx] for j in range(ny + 1)]
+    # Boundary node sets
+    sloping_left_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
+    sloping_right_nodes = [node_id_map[j, nx] for j in range(ny + 1)]
     top_nodes = [node_id_map[ny, i] for i in range(nx + 1)]
 
-    # Initial hydraulic head guess
-    h_fem = node_coords[:, 1].copy() + (h_pool - node_coords[:, 1]) * 0.5
+    # Initial head guess (linear distribution)
+    h_upstream = y_base + h_pool
+    h_fem = node_coords[:, 1].copy() + (h_upstream - node_coords[:, 1]) * 0.5
 
-    # Non-linear fixed-point iteration loop
+    # Nonlinear iteration loop for unconfined phreatic line
     for it in range(max_iter):
         h_old = h_fem.copy()
 
         fixed_nodes = []
         fixed_vals = {}
 
-        # 1. Upstream Reservoir Pool Boundary Condition (h = y_base + h_pool)
-        h_pool_elev = y_base + h_pool
-        for idx in range(nx + 1):
-            node = node_id_map[ny, idx]
-            x_node = node_coords[node, 0]
-            if x_node <= x_crest_left:
-                z_node = node_coords[node, 1]
-                if z_node <= h_pool_elev:
-                    fixed_nodes.append(node)
-                    fixed_vals[node] = h_pool_elev
-
-        for node in left_slope_nodes:
+        # 1. Upstream reservoir submerged face boundary condition
+        for node in sloping_left_nodes:
             z_node = node_coords[node, 1]
-            if z_node <= h_pool_elev:
+            if z_node <= h_upstream:
                 fixed_nodes.append(node)
-                fixed_vals[node] = h_pool_elev
+                fixed_vals[node] = h_upstream
 
-        # 2. Downstream Seepage Face Boundary Condition (h = z when wet)
-        for node in right_slope_nodes:
+        # Top reservoir pool boundary condition if submerged
+        for node in top_nodes:
+            z_node = node_coords[node, 1]
+            if z_node <= h_upstream:
+                fixed_nodes.append(node)
+                fixed_vals[node] = h_upstream
+
+        # 2. Downstream seepage face boundary condition (h = z)
+        for node in sloping_right_nodes:
             z_node = node_coords[node, 1]
             if h_fem[node] >= z_node or node == node_id_map[0, nx]:
                 fixed_nodes.append(node)
@@ -164,55 +155,100 @@ def solve_unconfined_tailings_fem(
 
             Ke = quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem)
 
-            for i_loc in range(4):
-                for j_loc in range(4):
-                    K_global[elem[i_loc], elem[j_loc]] += Ke[i_loc, j_loc]
+            for i in range(4):
+                for j in range(4):
+                    K_global[elem[i], elem[j]] += Ke[i, j]
 
-        # Apply Dirichlet boundary conditions and solve
+        # Solve system K * h = RHS
         RHS = np.zeros(num_nodes)
         for node in fixed_nodes:
             RHS[free_nodes] -= K_global[free_nodes, node] * fixed_vals[node]
 
-        if len(free_nodes) > 0:
-            h_free = np.linalg.solve(
-                K_global[np.ix_(free_nodes, free_nodes)], RHS[free_nodes]
-            )
-            for node in fixed_nodes:
-                h_fem[node] = fixed_vals[node]
-            h_fem[free_nodes] = h_free
+        h_free = np.linalg.solve(
+            K_global[np.ix_(free_nodes, free_nodes)], RHS[free_nodes]
+        )
+
+        for node in fixed_nodes:
+            h_fem[node] = fixed_vals[node]
+        h_fem[free_nodes] = h_free
 
         # Check convergence
         diff = np.max(np.abs(h_fem - h_old))
         if diff < tol:
             break
 
-    return node_coords, elements, h_fem
+    # Construct continuous phreatic line function for Bishop coupling
+    psi = h_fem - node_coords[:, 1]
+    x_phreatic = np.linspace(x_toe_left, x_toe_right, 100)
+    y_phreatic_vals = []
+
+    for x_q in x_phreatic:
+        mask = np.abs(node_coords[:, 0] - x_q) < 3.0
+        if np.any(mask):
+            sub_nodes = node_coords[mask]
+            sub_psi = psi[mask]
+            if np.min(sub_psi) <= 0 <= np.max(sub_psi):
+                sort_idx = np.argsort(sub_nodes[:, 1])
+                y_zero = np.interp(0, sub_psi[sort_idx], sub_nodes[sort_idx, 1])
+                y_phreatic_vals.append(y_zero)
+            elif np.all(sub_psi > 0):
+                y_phreatic_vals.append(np.max(sub_nodes[:, 1]))
+            else:
+                y_phreatic_vals.append(y_base)
+        else:
+            y_phreatic_vals.append(y_base)
+
+    def fem_phreatic_fn(x):
+        return np.interp(x, x_phreatic, y_phreatic_vals, left=y_base, right=y_base)
+
+    # Return structured dict compatible with Streamlit Tab 3 rendering
+    triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
+    gamma_w = 9.81
+    P_kpa = np.maximum(0, psi * gamma_w)
+
+    return {
+        "triangulation": triangulation,
+        "nodes": node_coords,
+        "elements": elements,
+        "h_fem": h_fem,
+        "psi": psi,
+        "P_kpa": P_kpa,
+        "x_phreatic": x_phreatic,
+        "y_phreatic": y_phreatic_vals,
+        "phreatic_fn": fem_phreatic_fn,
+    }
+
+
+# Wrapper function for backward compatibility with existing callers
+def solve_darcy_fem(h_pool=30.0, k_sat=1e-5):
+    return solve_unconfined_tailings_fem(h_pool=h_pool, K_sat=k_sat)
 
 
 # =====================================================================
 # 2. BISHOP SLOPE STABILITY ANALYSIS MODEL
 # =====================================================================
 def calculate_slope_stability(
-    xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w=9.81, c=15, phi=25
+    xc, yc, R, sensor_u_kpa, kh=0.0, gamma=18, gamma_w=9.81, c=15, phi=25, custom_phreatic_fn=None
 ):
     """
-    Bishop Stability Analysis with Dupuit Parabola and Pseudo-static Seismic kh.
+    Bishop Stability Analysis with Dupuit Parabola or FEM Phreatic Line.
     """
     dx = np.array([0, 40, 70, 100, 130, 200])
     dy = np.array([10, 10, 45, 45, 14, 14])
 
-    # 1. DEFINE DUPUIT PARABOLA
-    h_at_sensor = sensor_u_kpa / gamma_w
-    y_at_sensor = 10 + h_at_sensor
-    x_toe, y_toe = 40, 10
-    k = (y_at_sensor - y_toe) ** 2 / (80 - x_toe)
+    if custom_phreatic_fn is not None:
+        get_phreatic_y = custom_phreatic_fn
+    else:
+        h_at_sensor = sensor_u_kpa / gamma_w
+        y_at_sensor = 10 + h_at_sensor
+        x_toe, y_toe = 40, 10
+        k = (y_at_sensor - y_toe) ** 2 / (80 - x_toe)
 
-    def get_phreatic_y(x):
-        if x < x_toe:
-            return y_toe
-        return np.sqrt(max(0, k * (x - x_toe))) + y_toe
+        def get_phreatic_y(x):
+            if x < x_toe:
+                return y_toe
+            return np.sqrt(max(0, k * (x - x_toe))) + y_toe
 
-    # 2. CIRCULAR SLIP INTERSECTIONS
     x_scan = np.linspace(xc - R + 0.01, xc + R - 0.01, 2000)
     y_dam_scan = np.interp(x_scan, dx, dy)
     y_circ_scan = yc - np.sqrt(R**2 - (x_scan - xc) ** 2)
@@ -222,12 +258,11 @@ def calculate_slope_stability(
     sign_changes = np.where(abs_diff[:-1] != abs_diff[1:])[0]
 
     if len(sign_changes) < 2:
-        return 0.0, [], None, [], 0.0, 0.0
+        return 0.0, [], (np.array([]), np.array([])), [], 0.0, 0.0
 
     idx_start, idx_end = sign_changes[0], sign_changes[-1]
     x_start, x_end = x_scan[idx_start], x_scan[idx_end]
 
-    # 3. SLICES
     num_slices = 30
     slice_edges = np.linspace(x_start, x_end, num_slices + 1)
     b = (x_end - x_start) / num_slices
@@ -266,7 +301,6 @@ def calculate_slope_stability(
             }
         )
 
-    # 4. BISHOP SOLVER
     fs = 1.2
     convergence_history = []
     for i in range(25):
@@ -306,43 +340,30 @@ def calculate_slope_stability(
 
 
 # =====================================================================
-# 3. DIRECT TEST RUN
+# 3. DIRECT SCRIPT EXECUTION TEST
 # =====================================================================
 if __name__ == "__main__":
-    node_coords, elements, h_fem = solve_unconfined_tailings_fem(
-        nx=30, ny=15, h_pool=30.0, K_sat=1e-5
-    )
-
-    z_coords = node_coords[:, 1]
-    psi = h_fem - z_coords
+    fem_res = solve_unconfined_tailings_fem(h_pool=30.0, K_sat=1e-5)
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
+    cf = ax.tricontourf(fem_res["triangulation"], fem_res["h_fem"], levels=20, cmap="viridis")
+    ax.plot(fem_res["x_phreatic"], fem_res["y_phreatic"], "r--", linewidth=2.5, label="Phreatic Line (ψ = 0)")
 
-    cf = ax.tricontourf(triangulation, h_fem, levels=20, cmap="viridis")
-    ax.tricontour(
-        triangulation,
-        psi,
-        levels=[0.0],
-        colors="red",
-        linewidths=2.5,
-        linestyles="--",
-    )
-
-    for elem in elements:
+    for elem in fem_res["elements"]:
         elem_nodes = elem + [elem[0]]
         ax.plot(
-            node_coords[elem_nodes, 0],
-            node_coords[elem_nodes, 1],
+            fem_res["nodes"][elem_nodes, 0],
+            fem_res["nodes"][elem_nodes, 1],
             "k-",
             linewidth=0.3,
             alpha=0.3,
         )
 
-    ax.set_title("Unconfined Steady Seepage - Trapezoidal Dam Domain")
+    ax.set_title("Unconfined Darcy FEM Seepage - Dam Cross-Section Geometry")
     ax.set_xlabel("Distance [m]")
     ax.set_ylabel("Elevation [m]")
     ax.set_aspect("equal")
+    ax.legend(loc="upper left")
     fig.colorbar(cf, ax=ax, label="Hydraulic Head h [m]")
 
     plt.tight_layout()
