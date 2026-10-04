@@ -239,7 +239,7 @@ if not data.empty:
 
         col_fem_p1, col_fem_p2 = st.columns(2)
         with col_fem_p1:
-            h_pool_val = st.slider("Upstream Tailings Pool Elevation h_pool [m]", 10.0, 45.0, 30.0, step=1.0)
+            h_pool_val = st.slider("Upstream Tailings Pool Elevation h_pool [m]", 50.0, 110.0, 102.0, step=1.0)
             k_sat_val = st.select_slider("Hydraulic Conductivity K_sat [m/s]", options=[1e-7, 1e-6, 1e-5, 1e-4, 1e-3], value=1e-5)
         with col_fem_p2:
             num_levels = st.slider("Contour Levels", 10, 40, 20)
