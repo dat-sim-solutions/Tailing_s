@@ -33,7 +33,6 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
             psi_gauss = h_gauss - z_gauss  # Pressure head psi = h - z
 
             # Relative permeability function (simple cutoff for dry/unsaturated zone)
-            # Full K_sat if psi >= 0, near-zero K if dry (psi < 0)
             kr = 1.0 if psi_gauss >= 0.0 else 1e-4
 
             J = np.zeros((2, 2))
@@ -64,8 +63,12 @@ def solve_unconfined_tailings_fem(
     max_iter=30,
     tol=1e-3,
 ):
-    """Solves steady-state unconfined seepage with a phreatic surface and h = z seepage face."""
-    L_slope = Lx_top - Lx_bot
+    """
+    Solves steady-state unconfined seepage over a trapezoidal dam profile.
+    Lx_bot: Base width of dam (e.g. 500m)
+    Lx_top: Crest width of dam (e.g. 300m)
+    H_dam: Height of dam (e.g. 100m)
+    """
     xi_grid = np.linspace(0, 1, nx + 1)
     eta_grid = np.linspace(0, 1, ny + 1)
 
@@ -73,13 +76,18 @@ def solve_unconfined_tailings_fem(
     node_id_map = np.zeros((ny + 1, nx + 1), dtype=int)
     current_id = 0
 
-    for j, eta in enumerate(eta_grid):  # Stretches unitary grids to get trapezium (x,y)
-        y_val = eta * H_dam  # y coord
-        x_left = -eta * L_slope
-        x_right = Lx_bot
+    # Trapezoid geometry calculation:
+    # Base width = Lx_bot (from x=0 to x=Lx_bot at y=0)
+    # Crest width = Lx_top (centered over base at y=H_dam)
+    dx_slope = (Lx_bot - Lx_top) / 2.0
+
+    for j, eta in enumerate(eta_grid):
+        y_val = eta * H_dam
+        x_left = eta * dx_slope
+        x_right = Lx_bot - (eta * dx_slope)
 
         for i, xi in enumerate(xi_grid):
-            x_val = x_left + xi * (x_right - x_left)  # x coord as a function of y
+            x_val = x_left + xi * (x_right - x_left)
             node_coords.append([x_val, y_val])
             node_id_map[j, i] = current_id
             current_id += 1
@@ -100,29 +108,27 @@ def solve_unconfined_tailings_fem(
     top_nodes = [node_id_map[ny, i] for i in range(nx + 1)]
     sloping_left_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
 
-    # Initial head guess (assume linear distribution)
-    # Initial h values is between z and h_pool for all nodes
+    # Initial head guess
     h_fem = node_coords[:, 1].copy() + (h_pool - node_coords[:, 1]) * 0.5
 
     # Nonlinear iteration loop for unconfined phreatic line
     for it in range(max_iter):
         h_old = h_fem.copy()
 
-        # Update Dirichlet Boundary Conditions based on Seepage Face logic (h = z)
         fixed_nodes = []
         fixed_vals = {}
 
-        # 1. Top reservoir pool fixed at h_pool: Upper Boundary condition
+        # 1. Top reservoir pool boundary condition
         for node in top_nodes:
             fixed_nodes.append(node)
             fixed_vals[node] = h_pool
 
-        # 2. Sloping face: if node is below current water level, set h = z (seepage exit point)
+        # 2. Sloping face seepage boundary (h = z)
         for node in sloping_left_nodes:
             z_node = node_coords[node, 1]
             if h_fem[node] >= z_node or node == node_id_map[0, 0]:
                 fixed_nodes.append(node)
-                fixed_vals[node] = z_node  # h = z (atmospheric pressure)
+                fixed_vals[node] = z_node
 
         fixed_nodes = list(set(fixed_nodes))
         free_nodes = [n for n in range(num_nodes) if n not in fixed_nodes]
@@ -153,7 +159,7 @@ def solve_unconfined_tailings_fem(
             h_fem[node] = fixed_vals[node]
         h_fem[free_nodes] = h_free
 
-        # Check convergence
+        # Convergence check
         diff = np.max(np.abs(h_fem - h_old))
         if diff < tol:
             print(f"Unconfined seepage converged in {it + 1} iterations.")
@@ -171,11 +177,9 @@ def calculate_slope_stability(
     """
     Bishop Stability Analysis with Dupuit Parabola and Pseudo-static Seismic kh.
     """
-    # Dam Geometry
     dx = np.array([0, 40, 70, 100, 130, 200])
     dy = np.array([10, 10, 45, 45, 14, 14])
 
-    # 1. DEFINE THE DUPUIT PARABOLA
     h_at_sensor = sensor_u_kpa / gamma_w
     y_at_sensor = 10 + h_at_sensor
     x_toe, y_toe = 40, 10
@@ -186,7 +190,6 @@ def calculate_slope_stability(
             return y_toe
         return np.sqrt(max(0, k * (x - x_toe))) + y_toe
 
-    # 2. FIND INTERSECTIONS
     x_scan = np.linspace(xc - R + 0.01, xc + R - 0.01, 2000)
     y_dam_scan = np.interp(x_scan, dx, dy)
     y_circ_scan = yc - np.sqrt(R**2 - (x_scan - xc) ** 2)
@@ -201,7 +204,6 @@ def calculate_slope_stability(
     idx_start, idx_end = sign_changes[0], sign_changes[-1]
     x_start, x_end = x_scan[idx_start], x_scan[idx_end]
 
-    # 3. SLICES
     num_slices = 30
     slice_edges = np.linspace(x_start, x_end, num_slices + 1)
     b = (x_end - x_start) / num_slices
@@ -217,9 +219,8 @@ def calculate_slope_stability(
         y_bot = yc - np.sqrt(R**2 - (x_mid - xc) ** 2)
         h_slice = max(0, y_top - y_bot)
 
-        # Calculate Vertical Midpoint of the slice for the Seismic Lever Arm (hi)
         y_center = y_bot + (h_slice / 2)
-        hi = yc - y_center  # Perpendicular distance to center O for horizontal force
+        hi = yc - y_center
 
         y_water = get_phreatic_y(x_mid)
         h_water = y_water - y_bot
@@ -241,7 +242,6 @@ def calculate_slope_stability(
             }
         )
 
-    # 4. BISHOP SOLVER (Updated for kh)
     fs = 1.2
     convergence_history = []
     for i in range(25):
@@ -250,7 +250,6 @@ def calculate_slope_stability(
         for s in slices:
             a_rad = s["alpha_rad"]
 
-            # Driving Force = Static Moment + Seismic Moment (Normalized by R)
             static_moment = s["W"] * np.sin(a_rad)
             seismic_moment = abs(kh * s["W"] * s["hi"] / R)
             den += static_moment + seismic_moment
@@ -259,7 +258,6 @@ def calculate_slope_stability(
             if m_alpha < 0.1:
                 m_alpha = 0.1
 
-            # Resisting Force
             effective_weight = s["W"] - (s["u"] * s["b"])
             resisting = (
                 c * s["b"] + max(0, effective_weight) * np.tan(phi_rad)
@@ -283,12 +281,12 @@ def calculate_slope_stability(
 
 
 # =====================================================================
-# 3. DIRECT SCRIPT EXECUTION TEST
+# 3. SCRIPT TEST RUNNER
 # =====================================================================
 if __name__ == "__main__":
-    Lx_bot, Lx_top, H_dam = 300.0, 500.0, 100.0
-    K_sat = 1e-5  # [m/s]
-    h_pool = 90.0  # Pond elevation [m]
+    Lx_bot, Lx_top, H_dam = 500.0, 300.0, 100.0
+    K_sat = 1e-5
+    h_pool = 90.0
 
     node_coords, elements, h_fem = solve_unconfined_tailings_fem(
         nx=30, ny=15, Lx_bot=Lx_bot, Lx_top=Lx_top, H_dam=H_dam, K_sat=K_sat, h_pool=h_pool
@@ -320,7 +318,7 @@ if __name__ == "__main__":
             alpha=0.3,
         )
 
-    ax.set_title("Unconfined Steady Seepage with Phreatic Line (Red Dashed: Pressure Head ψ = 0)")
+    ax.set_title("Unconfined Seepage in Trapezoidal Embankment Dam Mesh")
     ax.set_xlabel("Distance [m]")
     ax.set_ylabel("Elevation [m]")
     ax.set_aspect("equal")
