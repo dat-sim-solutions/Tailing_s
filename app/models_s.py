@@ -55,21 +55,20 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
 def solve_unconfined_tailings_fem(
     nx=30,
     ny=15,
-    x_toe_left=40.0,
-    x_crest_left=70.0,
-    x_crest_right=100.0,
-    x_toe_right=130.0,
-    y_base=10.0,
-    y_top=45.0,
+    x_bot_left=0.0,
+    x_bot_right=300.0,
+    x_top_left=-200.0,
+    x_top_right=300.0,
+    y_base=0.0,
+    y_top=100.0,
     K_sat=1e-5,
-    h_pool=30.0,
+    h_pool=90.0,
     max_iter=35,
     tol=1e-3,
 ):
     """
-    Solves steady-state unconfined seepage inside the true embankment geometry:
-    Base: x in [40, 130] at y = 10
-    Crest: x in [70, 100] at y = 45
+    Solves steady-state unconfined seepage inside the trapezoidal domain defined by corners:
+    (0,0), (300,0), (300,100), (-200,100)
     """
     xi_grid = np.linspace(0, 1, nx + 1)
     eta_grid = np.linspace(0, 1, ny + 1)
@@ -78,14 +77,14 @@ def solve_unconfined_tailings_fem(
     node_id_map = np.zeros((ny + 1, nx + 1), dtype=int)
     current_id = 0
 
-    # Map rectangular isoparametric grid to embankment cross-section
+    # Map rectangular isoparametric grid to trapezoid domain
     for j, eta in enumerate(eta_grid):
         y_val = y_base + eta * (y_top - y_base)
 
-        # Upstream slope line (x_toe_left -> x_crest_left)
-        x_left = x_toe_left + eta * (x_crest_left - x_toe_left)
-        # Downstream slope line (x_toe_right -> x_crest_right)
-        x_right = x_toe_right - eta * (x_toe_right - x_crest_right)
+        # Left boundary along sloped face (0,0 -> -200,100)
+        x_left = x_bot_left + eta * (x_top_left - x_bot_left)
+        # Right boundary (300,0 -> 300,100)
+        x_right = x_bot_right + eta * (x_top_right - x_bot_right)
 
         for i, xi in enumerate(xi_grid):
             x_val = x_left + xi * (x_right - x_left)
@@ -122,20 +121,21 @@ def solve_unconfined_tailings_fem(
         fixed_nodes = []
         fixed_vals = {}
 
-        # 1. Reservoir boundary conditions
-        for node in sloping_left_nodes:
-            z_node = node_coords[node, 1]
-            if z_node <= h_upstream:
-                fixed_nodes.append(node)
-                fixed_vals[node] = h_upstream
-
+        # 1. Top reservoir pool boundary condition
         for node in top_nodes:
             z_node = node_coords[node, 1]
             if z_node <= h_upstream:
                 fixed_nodes.append(node)
                 fixed_vals[node] = h_upstream
 
-        # 2. Downstream seepage face (h = z)
+        # 2. Left sloping face boundary condition
+        for node in sloping_left_nodes:
+            z_node = node_coords[node, 1]
+            if z_node <= h_upstream:
+                fixed_nodes.append(node)
+                fixed_vals[node] = h_upstream
+
+        # 3. Downstream / Right exit face boundary condition (h = z)
         for node in sloping_right_nodes:
             z_node = node_coords[node, 1]
             if h_fem[node] >= z_node or node == node_id_map[0, nx]:
@@ -178,11 +178,11 @@ def solve_unconfined_tailings_fem(
 
     # Extract Phreatic Surface Line (psi = 0)
     psi = h_fem - node_coords[:, 1]
-    x_phreatic = np.linspace(x_toe_left, x_toe_right, 100)
+    x_phreatic = np.linspace(x_top_left, x_bot_right, 100)
     y_phreatic_vals = []
 
     for x_q in x_phreatic:
-        mask = np.abs(node_coords[:, 0] - x_q) < 3.0
+        mask = np.abs(node_coords[:, 0] - x_q) < 5.0
         if np.any(mask):
             sub_nodes = node_coords[mask]
             sub_psi = psi[mask]
@@ -217,7 +217,7 @@ def solve_unconfined_tailings_fem(
     }
 
 
-def solve_darcy_fem(h_pool=30.0, k_sat=1e-5):
+def solve_darcy_fem(h_pool=90.0, k_sat=1e-5):
     """Wrapper function maintaining compatibility with application calls."""
     return solve_unconfined_tailings_fem(h_pool=h_pool, K_sat=k_sat)
 
@@ -341,7 +341,7 @@ def calculate_slope_stability(
 # 3. DIRECT SCRIPT EXECUTION TEST
 # =====================================================================
 if __name__ == "__main__":
-    fem_res = solve_unconfined_tailings_fem(h_pool=30.0, K_sat=1e-5)
+    fem_res = solve_unconfined_tailings_fem(h_pool=90.0, K_sat=1e-5)
 
     fig, ax = plt.subplots(figsize=(10, 5))
     cf = ax.tricontourf(fem_res["triangulation"], fem_res["h_fem"], levels=20, cmap="viridis")
@@ -357,7 +357,7 @@ if __name__ == "__main__":
             alpha=0.3,
         )
 
-    ax.set_title("Unconfined Darcy FEM Seepage - Fitted Embankment Geometry")
+    ax.set_title("Unconfined Darcy FEM Seepage - Corner Coordinates: (0,0), (300,0), (300,100), (-200,100)")
     ax.set_xlabel("Distance [m]")
     ax.set_ylabel("Elevation [m]")
     ax.set_aspect("equal")
