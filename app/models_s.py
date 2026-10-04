@@ -158,8 +158,8 @@ def solve_darcy_fem(L_bottom=200, L_top=30, H_dam=35, h_pool=30.0, k_sat=1e-5, n
         x3, y3 = pts[2]
         
         # Element Area
-        2A = (x2*y3 - x3*y2) - (x1*y3 - x3*y1) + (x1*y2 - x2*y1)
-        Area = 0.5 * abs(2A)
+        two_A = (x2*y3 - x3*y2) - (x1*y3 - x3*y1) + (x1*y2 - x2*y1)
+        Area = 0.5 * abs(two_A)
         if Area < 1e-9:
             continue
             
