@@ -52,22 +52,18 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
     return Ke
 
 
-def solve_unconfined_tailings_fem(
-    nx=40,
-    ny=20,
-    Lx_bot=300.0,
-    Lx_top=500.0,
-    H_dam=100.0,
-    K_sat=1e-5,
-    h_rain_pool=102.0,
-    max_iter=40,
-    tol=1e-3,
-):
+def run_post_rain_seepage():
     """
-    Solves steady-state unconfined seepage matching run_post_rain_seepage BCs inside 
-    the inverted trapezoidal domain defined by corners: (0,0), (300,0), (300,100), (-200,100).
+    Solves steady-state unconfined seepage inside the inverted trapezoid domain
+    under post-rain conditions with a standing water pool boundary.
     """
-    L_slope = Lx_top - Lx_bot  # 200m offset -> x_top_left = -200
+    Lx_bot, Lx_top, H_dam = 300.0, 500.0, 100.0
+    K_sat = 1e-5
+    h_rain_pool = 102.0  # 100m dam height + 2m standing water after rain
+    nx, ny = 40, 20
+
+    # Build Inverted Trapezoid Mesh
+    L_slope = Lx_top - Lx_bot
     xi_grid = np.linspace(0, 1, nx + 1)
     eta_grid = np.linspace(0, 1, ny + 1)
 
@@ -75,7 +71,6 @@ def solve_unconfined_tailings_fem(
     node_id_map = np.zeros((ny + 1, nx + 1), dtype=int)
     current_id = 0
 
-    # Build Inverted Trapezoid Mesh
     for j, eta in enumerate(eta_grid):
         y_val = eta * H_dam
         x_left = -eta * L_slope
@@ -90,7 +85,6 @@ def solve_unconfined_tailings_fem(
     node_coords = np.array(node_coords)
     num_nodes = len(node_coords)
 
-    # Element connectivity
     elements = []
     for j in range(ny):
         for i in range(nx):
@@ -107,25 +101,25 @@ def solve_unconfined_tailings_fem(
     top_nodes = [node_id_map[ny, i] for i in range(nx + 1)]
     sloping_left_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
 
-    # Pool boundary: Only nodes on the top surface where x >= 50m
+    # Pool boundary: Only nodes on the top surface where x > 50m (impoundment pool area)
     pool_nodes = [n for n in top_nodes if node_coords[n, 0] >= 50.0]
 
     # Initial head guess
     h_fem = node_coords[:, 1] + 5.0
 
     # Picard Iterations
-    for it in range(max_iter):
+    for it in range(40):
         h_old = h_fem.copy()
 
         fixed_nodes = []
         fixed_vals = {}
 
-        # 1. Fix pool head (top surface x >= 50m)
+        # Fix pool head
         for n in pool_nodes:
             fixed_nodes.append(n)
             fixed_vals[n] = h_rain_pool
 
-        # 2. Seepage face on sloping wall (h = z if saturated)
+        # Seepage face on sloping wall (h = z if saturated)
         for n in sloping_left_nodes:
             z_n = node_coords[n, 1]
             if h_fem[n] >= z_n or n == node_id_map[0, 0]:
@@ -135,7 +129,6 @@ def solve_unconfined_tailings_fem(
         fixed_nodes = list(set(fixed_nodes))
         free_nodes = [n for n in range(num_nodes) if n not in fixed_nodes]
 
-        # Stiffness Assembly
         K_global = np.zeros((num_nodes, num_nodes))
         for elem in elements:
             Ke = quad_element_matrices_unconfined(
@@ -145,7 +138,6 @@ def solve_unconfined_tailings_fem(
                 for j in range(4):
                     K_global[elem[i], elem[j]] += Ke[i, j]
 
-        # Solve System
         RHS = np.zeros(num_nodes)
         for n in fixed_nodes:
             RHS[free_nodes] -= K_global[free_nodes, n] * fixed_vals[n]
@@ -158,17 +150,27 @@ def solve_unconfined_tailings_fem(
             h_fem[n] = fixed_vals[n]
         h_fem[free_nodes] = h_free
 
-        # Convergence Check
-        if np.max(np.abs(h_fem - h_old)) < tol:
+        if np.max(np.abs(h_fem - h_old)) < 1e-3:
             break
 
-    # Extract Phreatic Surface Line (psi = 0)
+    return node_coords, elements, h_fem
+
+
+def solve_darcy_fem(h_pool=102.0, k_sat=1e-5):
+    """
+    Wrapper function maintaining compatibility with external function calls and
+    returning extracted phreatic line data and triangulation objects.
+    """
+    node_coords, elements, h_fem = run_post_rain_seepage()
     psi = h_fem - node_coords[:, 1]
-    x_phreatic = np.linspace(-L_slope, Lx_bot, 100)
+
+    # Extract Phreatic Line (psi = 0)
+    x_min, x_max = np.min(node_coords[:, 0]), np.max(node_coords[:, 0])
+    x_phreatic = np.linspace(x_min, x_max, 100)
     y_phreatic_vals = []
 
     for x_q in x_phreatic:
-        mask = np.abs(node_coords[:, 0] - x_q) < 5.0
+        mask = np.abs(node_coords[:, 0] - x_q) < 10.0
         if np.any(mask):
             sub_nodes = node_coords[mask]
             sub_psi = psi[mask]
@@ -201,11 +203,6 @@ def solve_unconfined_tailings_fem(
         "y_phreatic": y_phreatic_vals,
         "phreatic_fn": fem_phreatic_fn,
     }
-
-
-def solve_darcy_fem(h_pool=102.0, k_sat=1e-5):
-    """Wrapper function maintaining compatibility with application calls."""
-    return solve_unconfined_tailings_fem(h_rain_pool=h_pool, K_sat=k_sat)
 
 
 # =====================================================================
@@ -327,27 +324,26 @@ def calculate_slope_stability(
 # 3. DIRECT SCRIPT EXECUTION TEST
 # =====================================================================
 if __name__ == "__main__":
-    fem_res = solve_unconfined_tailings_fem(h_rain_pool=102.0, K_sat=1e-5)
+    node_coords, elements, h_fem = run_post_rain_seepage()
+    triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    cf = ax.tricontourf(fem_res["triangulation"], fem_res["h_fem"], levels=20, cmap="viridis")
-    ax.plot(fem_res["x_phreatic"], fem_res["y_phreatic"], "r--", linewidth=2.5, label="Phreatic Line (ψ = 0)")
+    cf = ax.tricontourf(triangulation, h_fem, levels=20, cmap="viridis")
 
-    for elem in fem_res["elements"]:
+    for elem in elements:
         elem_nodes = elem + [elem[0]]
         ax.plot(
-            fem_res["nodes"][elem_nodes, 0],
-            fem_res["nodes"][elem_nodes, 1],
+            node_coords[elem_nodes, 0],
+            node_coords[elem_nodes, 1],
             "k-",
             linewidth=0.3,
             alpha=0.3,
         )
 
-    ax.set_title("Post-Rain Unconfined FEM Seepage (Pool x >= 50m, h = 102m)")
+    ax.set_title("Post-Rain Unconfined Seepage Solution (run_post_rain_seepage)")
     ax.set_xlabel("Distance [m]")
     ax.set_ylabel("Elevation [m]")
     ax.set_aspect("equal")
-    ax.legend(loc="upper left")
     fig.colorbar(cf, ax=ax, label="Hydraulic Head h [m]")
 
     plt.tight_layout()
