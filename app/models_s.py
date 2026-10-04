@@ -143,8 +143,7 @@ def run_post_rain_seepage():
             RHS[free_nodes] -= K_global[free_nodes, n] * fixed_vals[n]
 
         h_free = np.linalg.solve(
-            K_global[np.ix_(free_nodes, free_nodes)], RHS[free_nodes]
-        )
+            K_global[np.ix_(free_nodes, free_nodes)], RHS[free_nodes])
 
         for n in fixed_nodes:
             h_fem[n] = fixed_vals[n]
@@ -162,7 +161,7 @@ def solve_darcy_fem(h_pool=102.0, k_sat=1e-5):
     returning extracted phreatic line data and triangulation objects.
     """
     node_coords, elements, h_fem = run_post_rain_seepage()
-    psi = h_fem - node_coords[:, 1]
+    psi = h_fem - node_coords[:, 1] # z_coords
 
     # Extract Phreatic Line (psi = 0)
     x_min, x_max = np.min(node_coords[:, 0]), np.max(node_coords[:, 0])
