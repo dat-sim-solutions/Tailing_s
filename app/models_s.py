@@ -162,7 +162,18 @@ def solve_darcy_fem(h_pool=102.0, k_sat=1e-5):
     """
     node_coords, elements, h_fem = run_post_rain_seepage()
     psi = h_fem - node_coords[:, 1] # z_coords
-    triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
+
+    # Split 4-node quadrilaterals into 3-node triangles for tri.Triangulation
+    # This prevents Delaunay from drawing ghost triangles across the boundary
+    triangles = []
+    for elem in elements:
+        triangles.append([elem[0], elem[1], elem[2]])
+        triangles.append([elem[0], elem[2], elem[3]])
+
+    triangulation = tri.Triangulation(
+        node_coords[:, 0], node_coords[:, 1], triangles=triangles)
+    
+    #triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
 
     # Extract the true zero contour line (phreatic surface psi = 0) directly via Matplotlib
     fig_temp, ax_temp = plt.subplots()
