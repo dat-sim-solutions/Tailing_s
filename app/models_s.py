@@ -7,7 +7,7 @@ import numpy as np
 # 1. FEM UNCONFINED SEEPAGE FUNCTIONS
 # =====================================================================
 def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
-    """Computes element stiffness matrix with unconfined cutoff for unsaturated nodes."""
+    """Computes quadrilateral element stiffness matrix with unconfined cutoff."""
     gauss_pts = [-1.0 / np.sqrt(3), 1.0 / np.sqrt(3)]
     weights = [1.0, 1.0]
 
@@ -32,7 +32,7 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
             h_gauss = np.dot(N, h_elem_nodes)
             psi_gauss = h_gauss - z_gauss  # Pressure head psi = h - z
 
-            # Relative permeability function (simple cutoff for dry/unsaturated zone)
+            # Relative permeability cutoff for unsaturated zone
             kr = 1.0 if psi_gauss >= 0.0 else 1e-4
 
             J = np.zeros((2, 2))
@@ -51,46 +51,52 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
 
     return Ke
 
-# =====================================================================
-# FEM UNCONFINED SEEPAGE WITH EXACT DAM GEOMETRY (dx, dy)
-# =====================================================================
+
 def solve_unconfined_tailings_fem(
-    nx=60,
-    ny=20,
+    nx=30,
+    ny=15,
+    Lx_bot=130.0,
+    Lx_top=30.0,
+    H_dam=35.0,
     K_sat=1e-5,
-    h_pool=40.0,
-    max_iter=40,
+    h_pool=30.0,
+    max_iter=30,
     tol=1e-3,
 ):
     """
-    Solves steady-state unconfined seepage directly on the exact dam 
-    geometry profile defined by (dx, dy).
+    Solves 2D unconfined steady seepage over the exact trapezoidal profile of the dam:
+    - Upstream slope: (40, 10) to (70, 45)
+    - Crest plateau: (70, 45) to (100, 45)
+    - Downstream slope: (100, 45) to (130, 14)
+    - Base foundation: y = 10 m
     """
-    # Dam Geometry Profile from App
-    dx = np.array([0, 40, 70, 100, 130, 200])
-    dy = np.array([10, 10, 45, 45, 14, 14])
+    x_toe_left, y_base = 40.0, 10.0
+    x_crest_left, y_top = 70.0, 45.0
+    x_crest_right = 100.0
+    x_toe_right, y_toe_right = 130.0, 14.0
 
-    # Base line elevation (foundation floor y = 10)
-    y_base = 10.0
+    # Upper boundary elevation profile y = f(x)
+    def get_top_surface_y(x):
+        if x <= x_crest_left:
+            return np.interp(x, [x_toe_left, x_crest_left], [y_base, y_top])
+        elif x <= x_crest_right:
+            return y_top
+        else:
+            return np.interp(x, [x_crest_right, x_toe_right], [y_top, y_toe_right])
 
-    # Grid parameters across horizontal range [0, 200]
-    x_grid = np.linspace(dx[0], dx[-1], nx + 1)
+    # Build structured nodal grid mapped strictly inside the trapezoid
+    x_grid = np.linspace(x_toe_left, x_toe_right, nx + 1)
     eta_grid = np.linspace(0, 1, ny + 1)
-
-    # Top surface elevation at each x_grid column
-    y_surface = np.interp(x_grid, dx, dy)
 
     node_coords = []
     node_id_map = np.zeros((ny + 1, nx + 1), dtype=int)
     current_id = 0
 
-    # Build node mesh fitted precisely to dam surface profile
     for j, eta in enumerate(eta_grid):
         for i, x_val in enumerate(x_grid):
-            # Linearly stretch y from foundation (y_base) up to ground surface (y_surface)
-            y_top = y_surface[i]
-            y_val = y_base + eta * (y_top - y_base)
-
+            y_surface = get_top_surface_y(x_val)
+            # Map eta linearly between foundation base (10m) and upper surface
+            y_val = y_base + eta * (y_surface - y_base)
             node_coords.append([x_val, y_val])
             node_id_map[j, i] = current_id
             current_id += 1
@@ -98,7 +104,7 @@ def solve_unconfined_tailings_fem(
     node_coords = np.array(node_coords)
     num_nodes = len(node_coords)
 
-    # Quadrilateral element connectivity
+    # Construct Quad elements
     elements = []
     for j in range(ny):
         for i in range(nx):
@@ -108,42 +114,36 @@ def solve_unconfined_tailings_fem(
             n4 = node_id_map[j + 1, i]
             elements.append([n1, n2, n3, n4])
 
-    # Node identification for boundaries
+    # Boundary node sets
     top_nodes = [node_id_map[ny, i] for i in range(nx + 1)]
-    left_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
-    right_nodes = [node_id_map[j, nx] for j in range(ny + 1)]
+    left_slope_nodes = [node_id_map[j, 0] for j in range(ny + 1)]
 
-    # Initial head guess
+    # Initial head estimation
     h_fem = node_coords[:, 1].copy() + (h_pool - node_coords[:, 1]) * 0.5
 
-    # Boundary conditions setup:
-    # Reservoir pool on the upstream side (x <= 70m)
-    upstream_top_nodes = [node for node in top_nodes if node_coords[node, 0] <= 70.0]
-
-    # Non-linear Seepage Iteration
+    # Non-linear iteration solver loop
     for it in range(max_iter):
         h_old = h_fem.copy()
 
         fixed_nodes = []
         fixed_vals = {}
 
-        # 1. Upstream Reservoir Pool Boundary (h = h_pool)
-        for node in upstream_top_nodes:
-            fixed_nodes.append(node)
-            fixed_vals[node] = h_pool
+        # 1. Reservoir boundary condition
+        h_upstream_boundary = y_base + h_pool
+        for idx in range(nx + 1):
+            node = node_id_map[ny, idx]
+            if node_coords[node, 0] <= x_crest_left:
+                fixed_nodes.append(node)
+                fixed_vals[node] = min(h_upstream_boundary, y_top)
 
-        # 2. Sloping surface downstream seepage face (h = z if atmospheric / wet)
-        for node in top_nodes:
-            if node_coords[node, 0] > 70.0:  # Downstream face / crest
-                z_node = node_coords[node, 1]
-                if h_fem[node] >= z_node:
-                    fixed_nodes.append(node)
-                    fixed_vals[node] = z_node
+        for node in left_slope_nodes:
+            fixed_nodes.append(node)
+            fixed_vals[node] = min(h_upstream_boundary, node_coords[node, 1])
 
         fixed_nodes = list(set(fixed_nodes))
         free_nodes = [n for n in range(num_nodes) if n not in fixed_nodes]
 
-        # Assemble Stiffness Matrix
+        # Global assembly
         K_global = np.zeros((num_nodes, num_nodes))
         for elem in elements:
             x_e = node_coords[elem, 0]
@@ -152,30 +152,30 @@ def solve_unconfined_tailings_fem(
 
             Ke = quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem)
 
-            for i in range(4):
-                for j in range(4):
-                    K_global[elem[i], elem[j]] += Ke[i, j]
+            for i_loc in range(4):
+                for j_loc in range(4):
+                    K_global[elem[i_loc], elem[j_loc]] += Ke[i_loc, j_loc]
 
         # Solve system
         RHS = np.zeros(num_nodes)
         for node in fixed_nodes:
             RHS[free_nodes] -= K_global[free_nodes, node] * fixed_vals[node]
 
-        h_free = np.linalg.solve(
-            K_global[np.ix_(free_nodes, free_nodes)], RHS[free_nodes]
-        )
+        if len(free_nodes) > 0:
+            h_free = np.linalg.solve(
+                K_global[np.ix_(free_nodes, free_nodes)], RHS[free_nodes]
+            )
+            for node in fixed_nodes:
+                h_fem[node] = fixed_vals[node]
+            h_fem[free_nodes] = h_free
 
-        for node in fixed_nodes:
-            h_fem[node] = fixed_vals[node]
-        h_fem[free_nodes] = h_free
-
-        # Convergence Check
+        # Convergence test
         diff = np.max(np.abs(h_fem - h_old))
         if diff < tol:
-            print(f"FEM Seepage converged in {it + 1} iterations.")
             break
 
     return node_coords, elements, h_fem
+
 
 # =====================================================================
 # 2. BISHOP SLOPE STABILITY ANALYSIS MODEL
@@ -189,6 +189,7 @@ def calculate_slope_stability(
     dx = np.array([0, 40, 70, 100, 130, 200])
     dy = np.array([10, 10, 45, 45, 14, 14])
 
+    # 1. DEFINE DUPUIT PARABOLA
     h_at_sensor = sensor_u_kpa / gamma_w
     y_at_sensor = 10 + h_at_sensor
     x_toe, y_toe = 40, 10
@@ -199,6 +200,7 @@ def calculate_slope_stability(
             return y_toe
         return np.sqrt(max(0, k * (x - x_toe))) + y_toe
 
+    # 2. CIRCULAR SLIP INTERSECTIONS
     x_scan = np.linspace(xc - R + 0.01, xc + R - 0.01, 2000)
     y_dam_scan = np.interp(x_scan, dx, dy)
     y_circ_scan = yc - np.sqrt(R**2 - (x_scan - xc) ** 2)
@@ -213,6 +215,7 @@ def calculate_slope_stability(
     idx_start, idx_end = sign_changes[0], sign_changes[-1]
     x_start, x_end = x_scan[idx_start], x_scan[idx_end]
 
+    # 3. SLICES
     num_slices = 30
     slice_edges = np.linspace(x_start, x_end, num_slices + 1)
     b = (x_end - x_start) / num_slices
@@ -251,6 +254,7 @@ def calculate_slope_stability(
             }
         )
 
+    # 4. BISHOP SOLVER
     fs = 1.2
     convergence_history = []
     for i in range(25):
@@ -290,15 +294,11 @@ def calculate_slope_stability(
 
 
 # =====================================================================
-# 3. SCRIPT TEST RUNNER
+# 3. DIRECT TEST RUN
 # =====================================================================
 if __name__ == "__main__":
-    Lx_bot, Lx_top, H_dam = 500.0, 300.0, 100.0
-    K_sat = 1e-5
-    h_pool = 90.0
-
     node_coords, elements, h_fem = solve_unconfined_tailings_fem(
-        nx=30, ny=15, Lx_bot=Lx_bot, Lx_top=Lx_top, H_dam=H_dam, K_sat=K_sat, h_pool=h_pool
+        nx=30, ny=15, h_pool=30.0, K_sat=1e-5
     )
 
     z_coords = node_coords[:, 1]
@@ -327,7 +327,7 @@ if __name__ == "__main__":
             alpha=0.3,
         )
 
-    ax.set_title("Unconfined Seepage in Trapezoidal Embankment Dam Mesh")
+    ax.set_title("Unconfined Steady Seepage - Trapezoidal Dam Domain")
     ax.set_xlabel("Distance [m]")
     ax.set_ylabel("Elevation [m]")
     ax.set_aspect("equal")
