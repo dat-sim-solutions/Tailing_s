@@ -268,16 +268,13 @@ if not data.empty:
             ax_fem.plot(fem_res['x_phreatic'], fem_res['y_phreatic'], 'r--', linewidth=2.5, label="Phreatic Line (ψ = 0)")
             
             ax_fem.set_title(f"Darcy FEM Seepage: {field_label}")
-            ax_fem.set_xlabel("Distance [m]")
-            ax_fem.set_ylabel("Elevation [m]")
-            ax_fem.set_aspect("equal")
+            ax_fem.set_xlabel("Distance [m]"); ax_fem.set_ylabel("Elevation [m]"); ax_fem.set_aspect("equal")
             ax_fem.legend(loc="upper left")
 
             # Colorbar alignment
             divider = make_axes_locatable(ax_fem)
             cax = divider.append_axes("right", size="2%", pad=0.15)
-            cbar = fig_fem.colorbar(cf, cax=cax)
-            cbar.set_label(field_label)
+            cbar = fig_fem.colorbar(cf, cax=cax); cbar.set_label(field_label)
 
             plt.tight_layout()
             st.pyplot(fig_fem)
