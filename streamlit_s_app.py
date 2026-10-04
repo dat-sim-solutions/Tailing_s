@@ -3,11 +3,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+import requests
 from sqlalchemy import create_engine, text
 from app.models_s import calculate_slope_stability, solve_darcy_fem
 import plotly.graph_objects as go
 import time
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.lines import Line2D
 
 # 1. DATABASE CONFIGURATION
 DB_URI = st.secrets["NEON_DB_URI"] 
@@ -112,6 +114,9 @@ if not data.empty:
     # --- TABS LAYOUT ---
     tab1, tab2, tab3 = st.tabs(["🎮 Manual Explorer", "🔥 Global Heatmap", "🌊 Darcy FEM Seepage"])
 
+    # =====================================================================
+    # TAB 1: MANUAL EXPLORER
+    # =====================================================================
     with tab1:
         st.sidebar.header("🔴 Slip Circle Geometry")
         xc = st.sidebar.slider("Center X (xc)", 20.0, 150.0, 75.0)
@@ -149,8 +154,6 @@ if not data.empty:
             st.write(f"**Head:** {round(u_latest/9.81, 2)} m")
 
         with col2:
-            from matplotlib.lines import Line2D
-            
             fig, ax = plt.subplots(figsize=(10, 6))
             dx, dy = np.array([40, 70, 100, 130]), np.array([10, 45, 45, 14])
             ax.plot(dx, dy, 'k-', linewidth=3)
@@ -183,7 +186,47 @@ if not data.empty:
             ax.set_ylim(0, 120); ax.set_xlim(20, 150); ax.set_aspect('equal')
             ax.legend(handles=handles, loc='upper left'); ax.grid(True, alpha=0.2)
             st.pyplot(fig)
-            
+
+        # TAB 1 DIAGNOSTICS: Convergence & Base Angles
+        if slices and history:
+            st.divider()
+            diag_col1, diag_col2 = st.columns(2)
+
+            with diag_col1:
+                st.write("### 📈 Solver Convergence")
+                fig_conv, ax_conv = plt.subplots(figsize=(6, 3))
+                ax_conv.plot(history, marker='o', linestyle='-', color='purple')
+                ax_conv.set_title("Bishop Iteration Path")
+                ax_conv.set_xlabel("Iteration Step")
+                ax_conv.set_ylabel("Factor of Safety")
+                ax_conv.grid(True, alpha=0.3)
+                st.pyplot(fig_conv)
+                st.write(f"Converged in **{len(history)-1}** steps.")
+
+            with diag_col2:
+                st.write("### 📐 Slice Angle (Slip Inclination) Distribution")
+                x_coords = [s['x_mid'] for s in slices]
+                alphas = [np.degrees(s['alpha_rad']) for s in slices]
+                
+                fig_alpha, ax_alpha = plt.subplots(figsize=(6, 3))
+                ax_alpha.plot(x_coords, alphas, marker='o', color='teal', label='Base Angle (α)')
+                ax_alpha.axhline(0, color='black', linestyle='--', alpha=0.5)
+                ax_alpha.set_xlabel("X-Coordinate of Slice (m)")
+                ax_alpha.set_ylabel("Angle α (degrees)")
+                ax_alpha.set_title("Rotational Tendency per Slice")
+                ax_alpha.grid(True, linestyle=':', alpha=0.6)
+                
+                ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) > 0), 
+                                      color='salmon', alpha=0.5, label='CW-Driving Zone')
+                ax_alpha.fill_between(x_coords, alphas, 0, where=(np.array(alphas) < 0), 
+                                      color='skyblue', alpha=0.5, label='CCW-Driving Zone')
+                
+                ax_alpha.legend(fontsize=8)
+                st.pyplot(fig_alpha)
+
+    # =====================================================================
+    # TAB 2: GLOBAL HEATMAP
+    # =====================================================================
     with tab2:
         st.subheader("🌐 Global Stability Grid Search")
         st.write("Calculates FS for a grid of centers using the current Radius.")
@@ -219,7 +262,16 @@ if not data.empty:
             ax_h.set_ylabel("Center Y (m)")
             st.pyplot(fig_h)
 
-    # --- TAB 3: DARCY FEM SEEPAGE SOLVER ---
+            # TAB 2 MIN FS STATUS BANNER
+            min_found = np.nanmin(fs_matrix)
+            if min_found < 1.0:
+                st.error(f"⚠️ **DANGER:** The most critical center found has an FS of: **{min_found:.3f}**")
+            else:
+                st.success(f"✅ **Safe:** The most critical center found has an FS of: **{min_found:.3f}**")
+
+    # =====================================================================
+    # TAB 3: DARCY FEM SEEPAGE SOLVER
+    # =====================================================================
     with tab3:
         st.subheader("🌊 2D Unconfined Stationary Darcy FEM Seepage Simulation")
         st.markdown("Configure hydraulic conductivity, pool elevation, and geometry to compute hydraulic head ($h$) and pore pressure ($P$).")
@@ -260,7 +312,7 @@ if not data.empty:
             ax_fem.set_aspect("equal")
             ax_fem.legend(loc="upper left")
 
-            # Proportionate Colorbar Lock
+            # Colorbar
             divider = make_axes_locatable(ax_fem)
             cax = divider.append_axes("right", size="2%", pad=0.15)
             cbar = fig_fem.colorbar(cf, cax=cax)
@@ -283,9 +335,9 @@ if not data.empty:
     st.dataframe(data, use_container_width=True)
 
     st.sidebar.divider()
-    st.sidebar.markdown(f"**Developer:** MSc Juan Avalos Carrión")
+    st.sidebar.markdown("**Developer:** MSc Juan Avalos Carrión")
     st.sidebar.caption("Geophysics Data Engineer, AI + Physics | 2026")
-    st.sidebar.markdown(f"https://www.linkedin.com/in/juan-a-c-01457674/")
+    st.sidebar.markdown("https://www.linkedin.com/in/juan-a-c-01457674/")
 
 else:
     st.warning("Database empty. Check Neon connection.")
