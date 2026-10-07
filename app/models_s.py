@@ -10,12 +10,10 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
     """Computes quadrilateral element stiffness matrix with unconfined cutoff for unsaturated nodes."""
     gauss_pts = [-1.0 / np.sqrt(3), 1.0 / np.sqrt(3)]
     weights = [1.0, 1.0]
-
     Ke = np.zeros((4, 4))
 
     for xi, w_xi in zip(gauss_pts, weights):
         for eta, w_eta in zip(gauss_pts, weights):
-            # Shape functions & derivatives
             N = 0.25 * np.array(
                 [
                     (1 - xi) * (1 - eta),
@@ -24,16 +22,19 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
                     (1 - xi) * (1 + eta),
                 ]
             )
-            dN_dxi = 0.25 * np.array([-(1 - eta), (1 - eta), (1 + eta), -(1 + eta)])
-            dN_deta = 0.25 * np.array([-(1 - xi), -(1 + xi), (1 + xi), (1 - xi)])
+            dN_dxi = 0.25 * np.array(
+                [-(1 - eta), (1 - eta), (1 + eta), -(1 + eta)]
+            )
+            dN_deta = 0.25 * np.array(
+                [-(1 - xi), -(1 + xi), (1 + xi), (1 - xi)]
+            )
 
-            # Evaluate elevation (z) and head (h) at current Gauss point
             z_gauss = np.dot(N, y_e)
             h_gauss = np.dot(N, h_elem_nodes)
-            psi_gauss = h_gauss - z_gauss  # Pressure head psi = h - z
+            psi_gauss = h_gauss - z_gauss
 
-            # Relative permeability cutoff (unsaturated zone)
-            kr = 1.0 if psi_gauss >= 0.0 else 1e-4
+            # Permeability cutoff for unsaturated zone (psi < 0)
+            kr = 1.0 if psi_gauss >= 0.0 else 1e-3
 
             J = np.zeros((2, 2))
             J[0, 0] = np.dot(dN_dxi, x_e)
@@ -43,11 +44,9 @@ def quad_element_matrices_unconfined(x_e, y_e, K_sat, h_elem_nodes):
 
             detJ = np.linalg.det(J)
             invJ = np.linalg.inv(J)
-
             dN_dx_dy = invJ @ np.vstack((dN_dxi, dN_deta))
 
-            weight = w_xi * w_eta * detJ
-            Ke += (K_sat * kr) * (dN_dx_dy.T @ dN_dx_dy) * weight
+            Ke += (K_sat * kr) * (dN_dx_dy.T @ dN_dx_dy) * w_xi * w_eta * detJ
 
     return Ke
 
@@ -158,39 +157,49 @@ def run_post_rain_seepage():
 
 def solve_darcy_fem(h_pool=102.0, k_sat=1e-5):
     """
-    Wrapper function maintaining compatibility with external function calls and
-    returning extracted phreatic line data and triangulation objects.
+    Wrapper function maintaining compatibility with external function calls,
+    extracting precise contour path phreatic line data for application interfaces.
     """
     node_coords, elements, h_fem = run_post_rain_seepage()
-    psi = h_fem - node_coords[:, 1]
+    z_coords = node_coords[:, 1]
+    psi = h_fem - z_coords
+    P_kPa = psi * 9.81
 
-    # Extract Phreatic Line (psi = 0)
-    x_min, x_max = np.min(node_coords[:, 0]), np.max(node_coords[:, 0])
-    x_phreatic = np.linspace(x_min, x_max, 100)
-    y_phreatic_vals = []
+    triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
 
-    for x_q in x_phreatic:
-        mask = np.abs(node_coords[:, 0] - x_q) < 10.0
-        if np.any(mask):
-            sub_nodes = node_coords[mask]
-            sub_psi = psi[mask]
-            if np.min(sub_psi) <= 0 <= np.max(sub_psi):
-                sort_idx = np.argsort(sub_nodes[:, 1])
-                y_zero = np.interp(0, sub_psi[sort_idx], sub_nodes[sort_idx, 1])
-                y_phreatic_vals.append(y_zero)
-            elif np.all(sub_psi > 0):
-                y_phreatic_vals.append(np.max(sub_nodes[:, 1]))
-            else:
-                y_phreatic_vals.append(0.0)
-        else:
-            y_phreatic_vals.append(0.0)
+    # Extract contour line coordinates for P = 0 kPa
+    fig_temp, ax_temp = plt.subplots()
+    contour_obj = ax_temp.tricontour(triangulation, P_kPa, levels=[0.0])
+    
+    phreatic_coords = []
+    try:
+        paths = contour_obj.get_paths()
+    except AttributeError:
+        paths = [
+            path
+            for collection in contour_obj.collections
+            for path in collection.get_paths()
+        ]
+
+    for path in paths:
+        verts = path.vertices
+        if len(verts) > 0:
+            phreatic_coords.append(verts)
+
+    plt.close(fig_temp)
+
+    if phreatic_coords:
+        phreatic_data = np.vstack(phreatic_coords)
+        # Sort along X-axis for monotonic interpolation
+        sort_idx = np.argsort(phreatic_data[:, 0])
+        x_phreatic = phreatic_data[sort_idx, 0]
+        y_phreatic_vals = phreatic_data[sort_idx, 1]
+    else:
+        x_phreatic = np.linspace(np.min(node_coords[:, 0]), np.max(node_coords[:, 0]), 100)
+        y_phreatic_vals = np.zeros_like(x_phreatic)
 
     def fem_phreatic_fn(x):
         return np.interp(x, x_phreatic, y_phreatic_vals, left=0.0, right=0.0)
-
-    triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
-    gamma_w = 9.81
-    P_kpa = np.maximum(0, psi * gamma_w)
 
     return {
         "triangulation": triangulation,
@@ -198,7 +207,7 @@ def solve_darcy_fem(h_pool=102.0, k_sat=1e-5):
         "elements": elements,
         "h_fem": h_fem,
         "psi": psi,
-        "P_kpa": P_kpa,
+        "P_kpa": P_kPa,
         "x_phreatic": x_phreatic,
         "y_phreatic": y_phreatic_vals,
         "phreatic_fn": fem_phreatic_fn,
@@ -321,30 +330,84 @@ def calculate_slope_stability(
 
 
 # =====================================================================
-# 3. DIRECT SCRIPT EXECUTION TEST
+# 3. DIRECT SCRIPT EXECUTION TEST & PLOTTING
 # =====================================================================
 if __name__ == "__main__":
     node_coords, elements, h_fem = run_post_rain_seepage()
-    triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
+
+    z_coords = node_coords[:, 1]
+    psi = h_fem - z_coords
+    P_kPa = psi * 9.81  # Convert pressure head (m) to Pore Pressure in kPa
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    cf = ax.tricontourf(triangulation, h_fem, levels=20, cmap="viridis")
+    triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
+    
+    # Plot Pressure Contours in kPa
+    cf = ax.tricontourf(triangulation, P_kPa, levels=20, cmap="jet")
 
+    # Overlay Phreatic Line (P = 0 kPa)
+    if np.min(P_kPa) <= 0.0 <= np.max(P_kPa):
+        contour_obj = ax.tricontour(
+            triangulation,
+            P_kPa,
+            levels=[0.0],
+            colors="black",
+            linewidths=2.5,
+            linestyles="--",
+        )
+        ax.plot([], [], "k--", linewidth=2.5, label="Phreatic Line (P = 0 kPa)")
+
+        # Extract Phreatic Line Data & Plot Scatter Points
+        phreatic_coords = []
+        try:
+            paths = contour_obj.get_paths()
+        except AttributeError:
+            paths = [
+                path
+                for collection in contour_obj.collections
+                for path in collection.get_paths()
+            ]
+
+        for path in paths:
+            verts = path.vertices
+            if len(verts) > 0:
+                phreatic_coords.append(verts)
+
+        if phreatic_coords:
+            phreatic_data = np.vstack(phreatic_coords)
+
+            ax.scatter(
+                phreatic_data[:, 0],
+                phreatic_data[:, 1],
+                color="red",
+                s=20,
+                zorder=5,
+                label="Extracted Phreatic Data Points",
+            )
+
+            print(
+                f"Successfully extracted {len(phreatic_data)} coordinates along the Phreatic Line."
+            )
+            print("First 5 (x, y) coordinates [m]:")
+            print(phreatic_data[:5])
+
+        ax.legend(loc="upper left")
+
+    # Overlay Mesh
     for elem in elements:
         elem_nodes = elem + [elem[0]]
         ax.plot(
             node_coords[elem_nodes, 0],
             node_coords[elem_nodes, 1],
             "k-",
-            linewidth=0.3,
+            linewidth=0.2,
             alpha=0.3,
         )
 
-    ax.set_title("Post-Rain Unconfined Seepage Solution (run_post_rain_seepage)")
+    ax.set_title("Post-Rain Pore Pressure Distribution [kPa]")
     ax.set_xlabel("Distance [m]")
     ax.set_ylabel("Elevation [m]")
     ax.set_aspect("equal")
-    fig.colorbar(cf, ax=ax, label="Hydraulic Head h [m]")
-
+    fig.colorbar(cf, ax=ax, label="Pore Water Pressure P [kPa]")
     plt.tight_layout()
     plt.show()
