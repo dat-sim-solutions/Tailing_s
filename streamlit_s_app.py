@@ -258,6 +258,10 @@ if not data.empty:
             cf = ax_fem.tricontourf(fem_res['triangulation'], field_data, levels=num_levels, cmap="viridis")
             cs = ax_fem.tricontour(fem_res['triangulation'], field_data, levels=15, colors="white", linewidths=0.5, alpha=0.7)
             ax_fem.clabel(cs, inline=True, fontsize=8, fmt="%.1f")
+
+            for elem in fem_res['elements']: # to plot grids
+                elem_nodes = elem + [elem[0]]
+                ax_fem.plot(fem_res['nodes'][elem_nodes, 0],fem_res['nodes'][elem_nodes, 1],"k-",linewidth=0.2,alpha=0.3,)
             
             # Overlay Phreatic Line (psi = 0)
             ax_fem.plot(fem_res['x_phreatic'], fem_res['y_phreatic'], 'r--', linewidth=2.5, label="Phreatic Line (ψ = 0)")
