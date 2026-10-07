@@ -143,7 +143,8 @@ def run_post_rain_seepage():
             RHS[free_nodes] -= K_global[free_nodes, n] * fixed_vals[n]
 
         h_free = np.linalg.solve(
-            K_global[np.ix_(free_nodes, free_nodes)], RHS[free_nodes])
+            K_global[np.ix_(free_nodes, free_nodes)], RHS[free_nodes]
+        )
 
         for n in fixed_nodes:
             h_fem[n] = fixed_vals[n]
@@ -161,45 +162,33 @@ def solve_darcy_fem(h_pool=102.0, k_sat=1e-5):
     returning extracted phreatic line data and triangulation objects.
     """
     node_coords, elements, h_fem = run_post_rain_seepage()
-    psi = h_fem - node_coords[:, 1] # z_coords
+    psi = h_fem - node_coords[:, 1]
 
-    # Split 4-node quadrilaterals into 3-node triangles for tri.Triangulation
-    # This prevents Delaunay from drawing ghost triangles across the boundary
-    triangles = []
-    for elem in elements:
-        triangles.append([elem[0], elem[1], elem[2]])
-        triangles.append([elem[0], elem[2], elem[3]])
+    # Extract Phreatic Line (psi = 0)
+    x_min, x_max = np.min(node_coords[:, 0]), np.max(node_coords[:, 0])
+    x_phreatic = np.linspace(x_min, x_max, 100)
+    y_phreatic_vals = []
 
-    triangulation = tri.Triangulation(
-        node_coords[:, 0], node_coords[:, 1], triangles=triangles)
-    
-    #triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
+    for x_q in x_phreatic:
+        mask = np.abs(node_coords[:, 0] - x_q) < 10.0
+        if np.any(mask):
+            sub_nodes = node_coords[mask]
+            sub_psi = psi[mask]
+            if np.min(sub_psi) <= 0 <= np.max(sub_psi):
+                sort_idx = np.argsort(sub_nodes[:, 1])
+                y_zero = np.interp(0, sub_psi[sort_idx], sub_nodes[sort_idx, 1])
+                y_phreatic_vals.append(y_zero)
+            elif np.all(sub_psi > 0):
+                y_phreatic_vals.append(np.max(sub_nodes[:, 1]))
+            else:
+                y_phreatic_vals.append(0.0)
+        else:
+            y_phreatic_vals.append(0.0)
 
-    # Extract the true zero contour line (phreatic surface psi = 0) directly via Matplotlib
-    fig_temp, ax_temp = plt.subplots()
-    cs = ax_temp.tricontour(triangulation, psi, levels=[0])
-    
-    x_phreatic, y_phreatic = [], []
-    if len(cs.collections[0].get_paths()) > 0:
-        p = cs.collections[0].get_paths()[0]
-        v = p.vertices
-        x_phreatic = v[:, 0]
-        y_phreatic = v[:, 1]
-    plt.close(fig_temp)  # Clean up temporary figure
+    def fem_phreatic_fn(x):
+        return np.interp(x, x_phreatic, y_phreatic_vals, left=0.0, right=0.0)
 
-    # Fallback interpolation function for Bishop analysis
-    if len(x_phreatic) > 1:
-        # Sort by x for monotonic interpolation
-        sort_idx = np.argsort(x_phreatic)
-        x_p_sorted = x_phreatic[sort_idx]
-        y_p_sorted = y_phreatic[sort_idx]
-        
-        def fem_phreatic_fn(x):
-            return np.interp(x, x_p_sorted, y_p_sorted, left=y_p_sorted[0], right=y_p_sorted[-1])
-    else:
-        def fem_phreatic_fn(x):
-            return 0.0
-            
+    triangulation = tri.Triangulation(node_coords[:, 0], node_coords[:, 1])
     gamma_w = 9.81
     P_kpa = np.maximum(0, psi * gamma_w)
 
