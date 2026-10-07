@@ -261,7 +261,7 @@ if not data.empty:
 
             for elem in fem_res['elements']: # to plot grids
                 elem_nodes = elem + [elem[0]]
-                ax_fem.plot(fem_res['nodes'][elem_nodes, 0],fem_res['nodes'][elem_nodes, 1],"k-",linewidth=0.2,alpha=0.3,)
+                ax_fem.plot(fem_res['nodes'][elem_nodes, 0],fem_res['nodes'][elem_nodes, 1],"k-",linewidth=0.4,alpha=0.5,)
             
             # Overlay Phreatic Line (psi = 0)
             ax_fem.plot(fem_res['x_phreatic'], fem_res['y_phreatic'], 'r--', linewidth=2.5, label="Phreatic Line (ψ = 0)")
