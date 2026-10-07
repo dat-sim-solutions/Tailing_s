@@ -126,14 +126,12 @@ if not data.empty:
         yc = st.sidebar.slider("Center Y (yc)", 30.0, 150.0, 85.0)
         R = st.sidebar.slider("Radius (R)", 10.0, 100.0, 65.0)
 
-        # Set custom_phreatic to None so Bishop uses timestamp/sensor data (u_latest)
-        custom_phreatic = None
-
+        # Explicitly passing custom_phreatic_fn=None to use piezometer timestamp data
         fs, slices, water_line, history, num, den = calculate_slope_stability(
-            xc, yc, R, u_latest, kh=kh, custom_phreatic_fn=custom_phreatic
+            xc, yc, R, u_latest, kh=kh, custom_phreatic_fn=None
         )
 
-        st.info("⚡ Bishop Stability Model is currently utilizing **Sensor / Timestamp Data**.")
+        st.info("⚡ Bishop Stability Model is currently utilizing the **Piezometer Timestamp Data**.")
 
         col1, col2 = st.columns([1, 3])
                 
@@ -205,13 +203,10 @@ if not data.empty:
             progress_text = "Analyzing slope stability surfaces..."
             my_bar = st.progress(0, text=progress_text)
 
-            # Set custom_phreatic to None so Bishop uses timestamp/sensor data (u_latest)
-            custom_phreatic = None
-
             for i, py in enumerate(grid_y):
                 for j, px in enumerate(grid_x):
                     val, _, _, _, _, _ = calculate_slope_stability(
-                        px, py, R, u_latest, kh=kh, custom_phreatic_fn=custom_phreatic
+                        px, py, R, u_latest, kh=kh, custom_phreatic_fn=None
                     )
                     abs_val = abs(val) if val is not None else np.nan
                     if 0.1 < abs_val < 50:
@@ -249,9 +244,7 @@ if not data.empty:
             with st.spinner("Assembling Stiffness Matrix K & Solving System K·h = F..."):
                 fem_res = solve_darcy_fem(h_pool=h_pool_val, k_sat=k_sat_val)
                 st.session_state['fem_results'] = fem_res
-                # Do NOT pass fem_phreatic_fn to session state for Bishop coupling
-                if 'fem_phreatic_fn' in st.session_state:
-                    del st.session_state['fem_phreatic_fn']
+                st.session_state['fem_phreatic_fn'] = fem_res['phreatic_fn']
                 st.success("Darcy FEM Simulation Completed!")
 
         if 'fem_results' in st.session_state:
@@ -281,8 +274,23 @@ if not data.empty:
             plt.tight_layout()
             st.pyplot(fig_fem)
 
-            st.info("ℹ️ Darcy FEM simulation solved independently. Bishop model is using timestamp data.")
+            st.success("✅ Darcy FEM simulation computed successfully.")
 
     # --- FOOTER & DIAGNOSTICS ---
     st.write("---")
-    st.write("###
+    st.write("### 📈 Solver Convergence & Force Balance Analysis")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Resisting (Num)", f"{num:.2f} kN")
+    col2.metric("Driving (Den)", f"{den:.2f} kN")
+    col3.metric("Final FS", f"{fs:.3f}")
+
+    st.subheader("📋 Raw Data Feed (Neon AWS)")
+    st.dataframe(data, use_container_width=True)
+
+    st.sidebar.divider()
+    st.sidebar.markdown(f"**Developer:** MSc Juan Avalos Carrión")
+    st.sidebar.caption("Geophysics Data Engineer, AI + Physics | 2026")
+    st.sidebar.markdown(f"https://www.linkedin.com/in/juan-a-c-01457674/")
+
+else:
+    st.warning("Database empty. Check Neon connection.")
