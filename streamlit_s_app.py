@@ -169,6 +169,14 @@ if not data.empty:
 
             ax.text(77,10, "DAM",fontsize=9,fontweight='bold',color='#4A2C00',ha='center',va='center',
                 bbox=dict(boxstyle='round,pad=0.5',facecolor='#FFF3E0',edgecolor='#B66D00',linewidth=1.2,alpha=0.85))
+            ax.text(155, 28, "TAILINGS IMPOUNDMENT\n(Unconsolidated Slurry)",fontsize=9,fontweight='bold',color='#2C2C2C',ha='center',
+                va='center',
+                bbox=dict(
+                boxstyle='round,pad=0.5',
+                facecolor='#F0F0F0',
+                edgecolor='#707070',
+                linewidth=1.2,
+                alpha=0.85))
             
             theta = np.linspace(0, 2*np.pi, 200)
             ax.plot(xc + R*np.cos(theta), yc + R*np.sin(theta), 'r--', alpha=0.4)
