@@ -163,9 +163,9 @@ if not data.empty:
             ax.plot(water_line[0], water_line[1], 'b--', label="Phreatic Line")
             ax.scatter([80], [10], color='blue', s=100, zorder=5, label="PZ-01 Sensor")
 
-            tailings_x, tailings_y =np.array([100,150]), np.array([43,43])
-            ax.plot(tailings_x, tailings_y, 'k--', linewidth=2, label="Tailings Surface")
-            ax.fill_between(tailings_x, tailings_y, 14, color='silver', alpha=0.9, label="Tailings Material")
+            tailings_x, tailings_y_top, tailings_y_bot =np.array([100,130,150]), np.array([43,43,43]), np.array([43,14,14])
+            ax.plot(tailings_x, tailings_y_top, 'k--', linewidth=2, label="Tailings Surface")
+            ax.fill_between(tailings_x, tailings_y_bot, tailings_y_top , 14, color='silver', alpha=0.9, label="Tailings Material")
             
             theta = np.linspace(0, 2*np.pi, 200)
             ax.plot(xc + R*np.cos(theta), yc + R*np.sin(theta), 'r--', alpha=0.4)
