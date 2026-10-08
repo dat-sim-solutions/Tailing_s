@@ -165,7 +165,7 @@ if not data.empty:
 
             tailings_x, tailings_y_top, tailings_y_bot =np.array([100,130,150]), np.array([43,43,43]), np.array([43,14,14])
             ax.plot(tailings_x, tailings_y_top, 'k--', linewidth=2, label="Tailings Surface")
-            ax.fill_between(tailings_x, tailings_y_bot, tailings_y_top , 14, color='silver', alpha=0.9, label="Tailings Material")
+            ax.fill_between(tailings_x, tailings_y_bot, tailings_y_top, color='silver', alpha=0.9, label="Tailings Material")
             
             theta = np.linspace(0, 2*np.pi, 200)
             ax.plot(xc + R*np.cos(theta), yc + R*np.sin(theta), 'r--', alpha=0.4)
