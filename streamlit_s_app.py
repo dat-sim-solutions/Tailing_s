@@ -167,9 +167,9 @@ if not data.empty:
             ax.plot(tailings_x, tailings_y_top, 'k--', linewidth=2, label="Tailings Surface")
             ax.fill_between(tailings_x, tailings_y_bot, tailings_y_top, color='silver', alpha=0.9, label="Tailings Material")
 
-            ax.text(77,10, "DAM",fontsize=9,fontweight='bold',color='#4A2C00',ha='center',va='center',
+            ax.text(77,10, "EMBANKMENT DAM\n(Compacted Soil)",fontsize=9,fontweight='bold',color='#4A2C00',ha='center',va='center',
                 bbox=dict(boxstyle='round,pad=0.5',facecolor='#FFF3E0',edgecolor='#B66D00',linewidth=1.2,alpha=0.85))
-            ax.text(100, 10, "TAILINGS IMPOUNDMENT\n(Unconsolidated Slurry)",fontsize=9,fontweight='bold',color='#2C2C2C',ha='center',
+            ax.text(100, 25, "TAILINGS IMPOUNDMENT\n(Unconsolidated Slurry)",fontsize=9,fontweight='bold',color='#2C2C2C',ha='center',
                 va='center',
                 bbox=dict(
                 boxstyle='round,pad=0.5',
