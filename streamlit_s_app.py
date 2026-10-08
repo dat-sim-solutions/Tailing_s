@@ -163,7 +163,7 @@ if not data.empty:
             ax.plot(water_line[0], water_line[1], 'b--', label="Phreatic Line")
             ax.scatter([80], [10], color='blue', s=100, zorder=5, label="PZ-01 Sensor")
 
-            tailings_x, tailings_y_top, tailings_y_bot =np.array([100,130,150]), np.array([43,43,43]), np.array([43,14,14])
+            tailings_x, tailings_y_top, tailings_y_bot =np.array([100,130,160]), np.array([43,43,43]), np.array([43,14,14])
             ax.plot(tailings_x, tailings_y_top, 'k--', linewidth=2, label="Tailings Surface")
             ax.fill_between(tailings_x, tailings_y_bot, tailings_y_top, color='silver', alpha=0.9, label="Tailings Material")
 
@@ -194,7 +194,7 @@ if not data.empty:
             if kh > 0:
                 handles.append(seismic_arrow_legend)
 
-            ax.set_ylim(0, 120); ax.set_xlim(20, 150); ax.set_aspect('equal')
+            ax.set_ylim(0, 120); ax.set_xlim(20, 160); ax.set_aspect('equal')
             ax.legend(handles=handles, loc='upper left'); ax.grid(True, alpha=0.2)
             st.pyplot(fig)
 
