@@ -167,9 +167,9 @@ if not data.empty:
             ax.plot(tailings_x, tailings_y_top, 'k--', linewidth=2, label="Tailings Surface")
             ax.fill_between(tailings_x, tailings_y_bot, tailings_y_top, color='silver', alpha=0.9, label="Tailings Material")
 
-            ax.text(85,10, "EMBANKMENT DAM\n(Compacted Soil)",fontsize=9,fontweight='bold',color='#4A2C00',ha='center',va='center',
+            ax.text(100,15, "EMBANKMENT DAM\n(Compacted Soil)",fontsize=9,fontweight='bold',color='#4A2C00',ha='center',va='center',
                 bbox=dict(boxstyle='round,pad=0.5',facecolor='#FFF3E0',edgecolor='#B66D00',linewidth=1.2,alpha=0.85))
-            ax.text(120, 30, "TAILINGS IMPOUNDMENT\n(Unconsolidated Slurry)",fontsize=9,fontweight='bold',color='#2C2C2C',ha='center',va='center',
+            ax.text(130, 30, "TAILINGS IMPOUNDMENT\n(Unconsolidated Slurry)",fontsize=9,fontweight='bold',color='#2C2C2C',ha='center',va='center',
                 bbox=dict(boxstyle='round,pad=0.5',facecolor='#F0F0F0',edgecolor='#707070',linewidth=1.2,alpha=0.85))
             
             theta = np.linspace(0, 2*np.pi, 200)
