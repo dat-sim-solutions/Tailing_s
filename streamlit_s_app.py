@@ -158,14 +158,14 @@ if not data.empty:
             
             fig, ax = plt.subplots(figsize=(10, 6))
             dx, dy = np.array([40, 70, 100, 130]), np.array([10, 45, 45, 14])
-            ax.plot(dx, dy, 'k-', linewidth=3)
-            ax.fill_between(dx, dy, color='navajowhite', alpha=0.8)
+            ax.plot(dx, dy, 'k-', linewidth=3,label="Dam Surface")
+            ax.fill_between(dx, dy, color='navajowhite', alpha=0.9,label="Dam Material")
             ax.plot(water_line[0], water_line[1], 'b--', label="Phreatic Line")
             ax.scatter([80], [10], color='blue', s=100, zorder=5, label="PZ-01 Sensor")
 
             tailings_x, tailings_y =np.array([100,150]), np.array([43,43])
             ax.plot(tailings_x, tailings_y, 'k--', linewidth=2, label="Tailings Surface")
-            ax.fill_between(tailings_x, tailings_y, 14, color='silver', alpha=0.8, label="Tailings Material")
+            ax.fill_between(tailings_x, tailings_y, 14, color='silver', alpha=0.9, label="Tailings Material")
             
             theta = np.linspace(0, 2*np.pi, 200)
             ax.plot(xc + R*np.cos(theta), yc + R*np.sin(theta), 'r--', alpha=0.4)
