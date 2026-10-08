@@ -166,6 +166,9 @@ if not data.empty:
             tailings_x, tailings_y_top, tailings_y_bot =np.array([100,130,150]), np.array([43,43,43]), np.array([43,14,14])
             ax.plot(tailings_x, tailings_y_top, 'k--', linewidth=2, label="Tailings Surface")
             ax.fill_between(tailings_x, tailings_y_bot, tailings_y_top, color='silver', alpha=0.9, label="Tailings Material")
+
+            ax.text(77,28, "DAM",fontsize=9,fontweight="bold",color='#4A2C00',ha='center',va='center'
+                bbox=dict(boxstyle='round,pad=0.5',facecolor='#FFF3E0',edgecolor='#B66D00',linewidth=1.2,alpha=0.85))
             
             theta = np.linspace(0, 2*np.pi, 200)
             ax.plot(xc + R*np.cos(theta), yc + R*np.sin(theta), 'r--', alpha=0.4)
