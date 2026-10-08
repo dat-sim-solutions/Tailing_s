@@ -194,6 +194,8 @@ if not data.empty:
             if kh > 0:
                 handles.append(seismic_arrow_legend)
 
+            ax.set_xlabel("Horizontal Distance (m)", fontsize=10, fontweight='bold')
+            ax.set_ylabel("Elevation (m)", fontsize=10, fontweight='bold')
             ax.set_ylim(0, 120); ax.set_xlim(20, 160); ax.set_aspect('equal')
             ax.legend(handles=handles, loc='upper left'); ax.grid(True, alpha=0.2)
             st.pyplot(fig)
